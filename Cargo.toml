@@ -1,0 +1,37 @@
+[package]
+name = "sai"
+version = "0.1.0"
+edition = "2021"
+authors = ["Iwan van der Kleijn <iwanvanderkleijn@gmail.com>"]
+license = "MIT"
+description = "SAI — Tell the shell what you want, not how to do it. Natural-language to safe shell command generator."
+readme = "README.md"
+repository = "https://github.com/your-org/sai"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+
+# Reqwest client for HTTP calls to OpenAI and Azure OpenAI.
+# Features:
+# - json: send/receive JSON
+# - blocking: simpler synchronous API for CLI apps
+# - rustls-tls: portable TLS implementation (no OpenSSL dependence)
+reqwest = { version = "0.12", features = ["json", "blocking", "rustls-tls"] }
+
+# Cross-platform config directory retrieval
+dirs = "5"
+
+# Safe shell splitting for safety checks
+shell-words = "1.1.0"
+
+# Optional but strongly recommended for robust UTF-8 conversions
+# (the code already uses String::from_utf8_lossy)
+# no extra crate needed; std is enough
+
+# If you later decide to add logging, add env_logger + log here:
+# log = "0.4"
+# env_logger = "0.11"

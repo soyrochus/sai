@@ -1,0 +1,306 @@
+# SAI Technical Specification
+**Version 1.0**  
+**MIT Licensed**
+
+This document describes the design, architecture, and safety model of **SAI**, the natural-language–to–shell-command generator.
+
+It complements the high-level README by describing how the system works internally and the rationale behind each design choice.
+
+---
+
+# 1. Overview
+
+SAI is a Rust CLI tool that converts natural language into **real, executable shell commands**, using an LLM configured via:
+
+- a **global configuration file** (AI settings + default prompt)
+- an optional **per-call prompt configuration file**
+- optional **sample data** supplied by `--peek`
+
+SAI enforces strong safety guarantees: only explicitly allowed tools may be used, and the output command must pass operator-level sanitization before execution.
+
+---
+
+# 2. Execution Model
+
+```
+
+```
+    User Input
+         │
+         ▼
+```
+
+┌──────────────────┐
+│ Global Config     │  (AI config + default prompt)
+└──────────────────┘
+│
+▼
+┌──────────────────┐
+│ Prompt Config     │  (per-call or default)
+└──────────────────┘
+│
+▼
+┌──────────────────┐
+│ Build system      │
+│ prompt + tools    │
+└──────────────────┘
+│
+▼
+┌──────────────────┐
+│ LLM Call          │  (OpenAI or Azure)
+└──────────────────┘
+│
+▼
+┌──────────────────┐
+│ Safety checks     │
+└──────────────────┘
+│
+▼
+Execution
+
+```
+
+---
+
+# 3. Configuration Model
+
+## 3.1 Global Configuration (`config.yaml`)
+
+Located at:
+
+- **Linux:** `~/.config/sai/config.yaml`
+- **macOS:** `~/Library/Application Support/sai/config.yaml`
+- **Windows:** `%APPDATA%/sai/config.yaml`
+
+Contains two sections:
+
+### `ai`  
+Configures the provider:
+
+```
+
+ai:
+provider: openai | azure
+openai_api_key: …
+openai_model: …
+azure_api_key: …
+azure_endpoint: …
+azure_deployment: …
+azure_api_version: …
+
+```
+
+Environment variables override these fields.
+
+### `default_prompt`  
+Defines:
+- meta prompt
+- allowed tools
+- their instructions to the LLM
+
+## 3.2 Per-call Prompt Config
+
+First positional argument in advanced mode.
+
+Same format as `default_prompt`.
+
+If present, it **replaces** the default prompt.
+
+---
+
+# 4. LLM Prompt Construction
+
+SAI constructs the final LLM context as:
+
+1. **System message**  
+   Built from:
+   - `meta_prompt`
+   - list of allowed tool names
+   - detailed tool instructions
+
+2. **User message**  
+   The natural language request.
+
+3. **User (data sample) message** *(optional)*  
+   Only added when using `--peek`.
+
+Example:
+
+```
+
+Here is a sample of the data the tools will operate on.
+It may be truncated and is provided only to infer structure and field names:
+<sample 1>
+<sample 2>
+
+```
+
+---
+
+# 5. Peek Mode (`--peek`)
+
+## 5.1 Purpose
+
+Giving the LLM **representative sample data** improves:
+
+- field name inference,
+- JSON path discovery,
+- handling of nested structures,
+- more precise jq filters.
+
+## 5.2 Truncation
+
+Each peek file is read up to **16 KB**.  
+If larger, SAI annotates:
+
+```
+
+(truncated after 16384 bytes)
+
+```
+
+This keeps LLM context bounded and prevents accidental large uploads.
+
+## 5.3 Safety
+
+Peek is **fully opt-in**.  
+No data is ever sent unless user provides `--peek`.
+
+---
+
+# 6. Safety Model
+
+Safety consists of **three independent layers**.
+
+---
+
+## 6.1 Tool Whitelisting
+
+Only tools listed in the prompt config may be used.
+
+SAI enforces:
+
+- First token of the generated command must match an allowed tool name.
+
+Example failure:
+
+```
+
+Disallowed command 'rm'. Allowed tools: jq
+
+```
+
+---
+
+## 6.2 Operator-Level Blocking
+
+Unless `--unsafe` is used, SAI rejects commands containing:
+
+- pipes: `|`
+- redirects: `>`, `>>`, `<`
+- command substitution: `$(`, `` `cmd` ``
+- chaining: `;`, `&&`, `||`
+- backgrounding: `&`
+- process substitution, or derived constructs
+
+This prevents:
+
+```
+
+cat file | rm -rf /
+
+```
+
+Example failure:
+
+```
+
+Disallowed shell operator '|' in generated command.
+Re-run with --unsafe if you really want to execute it.
+
+````
+
+---
+
+## 6.3 Confirmation Layer
+
+SAI provides two confirmation modes:
+
+- Explicit `--confirm`
+- Implicit when using `--unsafe`
+
+Confirmation shows:
+
+- Global config path
+- Prompt config path
+- Natural language prompt
+- Full generated command
+- Y/N choice
+
+The user must explicitly approve before execution.
+
+---
+
+# 7. Unsafe Mode (`--unsafe`)
+
+Disables operator blocking, but **forces interactive confirmation**.
+
+Used only when the LLM must generate commands involving:
+
+- pipes,
+- redirections,
+- multi-step operations.
+
+Example:
+
+```bash
+sai -u "Count unique identifiers then sort by frequency"
+````
+
+---
+
+# 8. Execution Model
+
+SAI executes commands via:
+
+```rust
+Command::new(tokens[0]).args(&tokens[1..])
+```
+
+No shell interpolation is used.
+This avoids unintended interpretation of token strings.
+
+---
+
+# 9. Error Handling
+
+Typical error conditions:
+
+* Missing AI configuration
+* Invalid prompt config
+* Disallowed tool name
+* Forbidden operator
+* LLM returned empty or unparsable output
+* Missing or unreadable peek file
+
+All errors include clear diagnostic messages.
+
+---
+
+# 10. Build and Release
+
+SAI provides a GitHub Actions workflow building:
+
+* Linux
+* macOS
+* Windows
+
+All builds use Rust stable and upload artifacts for release.
+
+---
+
+# 11. License
+
+MIT License.
+
+
