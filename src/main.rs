@@ -566,25 +566,124 @@ fn validate_and_split_command(
 
     // If not in unsafe mode, enforce operator-level safety.
     if !unsafe_mode {
-        // Operators we absolutely do not want: pipes, chaining, redirects, background, etc.
-        const FORBIDDEN_EXACT: [&str; 10] =
-            ["|", "||", "&&", ";", "&", ">", ">>", "<", "<<", "|&"];
-        const FORBIDDEN_SUBSTR: [&str; 3] = ["$(", "`", "${"];
-
-        for tok in &tokens {
-            if FORBIDDEN_EXACT.iter().any(|op| tok == op)
-                || FORBIDDEN_SUBSTR.iter().any(|pat| tok.contains(pat))
-            {
-                return Err(anyhow!(
-                    "Disallowed shell operator or construct '{}' in generated command. \
-                     Re-run with --unsafe if you really want to execute it.",
-                    tok
-                ));
-            }
+        if let Some(op) = detect_forbidden_operator(cmd_line) {
+            return Err(anyhow!(
+                "Disallowed shell operator or construct '{}' in generated command. \
+                 Re-run with --unsafe if you really want to execute it.",
+                op
+            ));
         }
     }
 
     Ok(tokens)
+}
+
+/// Scan the raw command line for forbidden shell operators when safety checks are enabled.
+/// We treat any unescaped operator outside single quotes as unsafe. Command substitution is
+/// disallowed even inside double quotes because the shell would still execute it.
+fn detect_forbidden_operator(cmd_line: &str) -> Option<String> {
+    let mut chars = cmd_line.chars().peekable();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escaped = false;
+
+    while let Some(c) = chars.next() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+
+        match c {
+            '\\' if !in_single => {
+                escaped = true;
+                continue;
+            }
+            '\'' if !in_double => {
+                in_single = !in_single;
+                continue;
+            }
+            '"' if !in_single => {
+                in_double = !in_double;
+                continue;
+            }
+            _ => {}
+        }
+
+        if in_single {
+            continue;
+        }
+
+        match c {
+            '$' => {
+                if let Some(&next) = chars.peek() {
+                    if next == '(' {
+                        return Some("$(...)".to_string());
+                    }
+                    if next == '{' {
+                        return Some("${...}".to_string());
+                    }
+                }
+            }
+            '`' => {
+                return Some("`...`".to_string());
+            }
+            _ => {}
+        }
+
+        if in_double {
+            continue;
+        }
+
+        match c {
+            '|' => {
+                if let Some(&next) = chars.peek() {
+                    if next == '|' {
+                        return Some("||".to_string());
+                    }
+                    if next == '&' {
+                        return Some("|&".to_string());
+                    }
+                }
+                return Some("|".to_string());
+            }
+            '&' => {
+                if let Some(&next) = chars.peek() {
+                    if next == '&' {
+                        return Some("&&".to_string());
+                    }
+                }
+                return Some("&".to_string());
+            }
+            ';' => {
+                return Some(";".to_string());
+            }
+            '>' => {
+                if let Some(&next) = chars.peek() {
+                    if next == '>' {
+                        return Some(">>".to_string());
+                    }
+                    if next == '(' {
+                        return Some(">(".to_string());
+                    }
+                }
+                return Some(">".to_string());
+            }
+            '<' => {
+                if let Some(&next) = chars.peek() {
+                    if next == '<' {
+                        return Some("<<".to_string());
+                    }
+                    if next == '(' {
+                        return Some("<(".to_string());
+                    }
+                }
+                return Some("<".to_string());
+            }
+            _ => {}
+        }
+    }
+
+    None
 }
 
 /// Ask the user for confirmation, showing config paths, NL input and command.
