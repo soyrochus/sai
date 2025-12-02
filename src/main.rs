@@ -17,6 +17,9 @@ const PEEK_MAX_BYTES: usize = 16 * 1024;
 /// sai: AI-assisted, config-driven command executor.
 ///
 /// Usage:
+///   sai --init
+///       -> creates a starter config file with placeholder API credentials
+///
 ///   sai "natural language prompt"
 ///       -> uses global default prompt/tools from config.yaml
 ///
@@ -27,11 +30,16 @@ const PEEK_MAX_BYTES: usize = 16 * 1024;
 ///   -c / --confirm   Ask for confirmation before executing the generated command.
 ///   -u / --unsafe    Disable operator-level safety checks (always implies confirm).
 ///   -p / --peek      Provide one or more sample data files for the LLM to inspect.
+///        --init      Create a default ~/.config/sai/config.yaml and exit.
 #[derive(Parser, Debug)]
 #[command(name = "sai")]
 #[command(version)]
 #[command(about = "AI-powered, YAML-configured command executor", long_about = None)]
 struct Cli {
+    /// Initialize the default config file with placeholder values
+    #[arg(long)]
+    init: bool,
+
     /// Ask for confirmation before executing the generated command
     #[arg(short, long)]
     confirm: bool,
@@ -47,7 +55,8 @@ struct Cli {
     peek: Vec<String>,
 
     /// Either a per-call prompt config YAML file, or the natural language prompt (simple mode)
-    arg1: String,
+    #[arg(required_unless_present = "init")]
+    arg1: Option<String>,
 
     /// Natural language prompt (advanced mode, when arg1 is a config file)
     prompt: Option<String>,
@@ -152,31 +161,37 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let global_config_path = find_global_config_path();
+
+    if cli.init {
+        init_global_config(&global_config_path)?;
+        return Ok(());
+    }
+
+    let arg1 = cli.arg1.clone().ok_or_else(|| {
+        anyhow!("Expected a prompt or prompt config path when not running with --init")
+    })?;
+
     let global_cfg = load_global_config(&global_config_path)?;
 
     // Decide mode: simple vs advanced
     let (prompt_cfg, prompt_source): (PromptConfig, Option<PathBuf>) = match cli.prompt.as_ref() {
         Some(_nl_prompt) => {
             // Advanced mode: arg1 is config path, prompt is nl_prompt
-            let cfg_path = PathBuf::from(&cli.arg1);
+            let cfg_path = PathBuf::from(&arg1);
             let prompt_cfg = load_prompt_config(&cfg_path)?;
             (prompt_cfg, Some(cfg_path))
         }
         None => {
             // Simple mode: arg1 is NL prompt, use global default_prompt
-            let prompt_cfg = global_cfg
-                .default_prompt
-                .clone()
-                .ok_or_else(|| anyhow!("No default_prompt found in global config for simple mode"))?;
+            let prompt_cfg = global_cfg.default_prompt.clone().ok_or_else(|| {
+                anyhow!("No default_prompt found in global config for simple mode")
+            })?;
             (prompt_cfg, None)
         }
     };
 
     // Natural language prompt string
-    let nl_prompt = cli
-        .prompt
-        .clone()
-        .unwrap_or_else(|| cli.arg1.clone());
+    let nl_prompt = cli.prompt.clone().unwrap_or_else(|| arg1.clone());
 
     // Build system prompt and allowed tool names from selected prompt config
     let (system_prompt, allowed_tools) = build_system_prompt(&prompt_cfg)?;
@@ -249,10 +264,58 @@ fn load_prompt_config(path: &Path) -> Result<PromptConfig> {
     Ok(cfg)
 }
 
+/// Create a starter config file with placeholder API keys and a basic jq tool definition.
+fn init_global_config(path: &Path) -> Result<()> {
+    if path.exists() {
+        return Err(anyhow!(
+            "Config file already exists at {}. Refusing to overwrite.",
+            path.display()
+        ));
+    }
+
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)
+            .with_context(|| format!("Failed to create config directory {}", dir.display()))?;
+    }
+
+    let template = r#"ai:
+  provider: openai
+  openai_api_key: changeme
+  openai_model: gpt-4.1-mini
+  # openai_base_url: https://api.openai.com/v1
+  # azure_api_key: changeme
+  # azure_endpoint: https://your-azure-openai-resource.openai.azure.com
+  # azure_deployment: changeme
+  # azure_api_version: 2024-02-15-preview
+
+default_prompt:
+  meta_prompt: |
+    You are SAI, a careful command composer. Only emit a single allowed tool command.
+    Never introduce shell operators such as pipes or redirects unless the operator has
+    explicitly enabled unsafe mode.
+  tools:
+    - name: jq
+      config: |
+        Use jq to query JSON data. Provide the filter as the first argument and the
+        target file paths afterwards. Do not chain shell operators; return exactly one
+        jq command.
+"#;
+
+    fs::write(path, template)
+        .with_context(|| format!("Failed to write default config file to {}", path.display()))?;
+
+    println!("Default configuration written to {}", path.display());
+    println!("Update the placeholder API credentials before running sai.");
+
+    Ok(())
+}
+
 /// Build the system prompt from the prompt config and return also the list of allowed tool names.
 fn build_system_prompt(prompt_cfg: &PromptConfig) -> Result<(String, Vec<String>)> {
     if prompt_cfg.tools.is_empty() {
-        return Err(anyhow!("Prompt config must define at least one tool under 'tools:'"));
+        return Err(anyhow!(
+            "Prompt config must define at least one tool under 'tools:'"
+        ));
     }
 
     let meta_prompt = prompt_cfg
@@ -362,8 +425,9 @@ fn resolve_ai_config(global_ai: Option<AiConfig>) -> Result<EffectiveAiConfig> {
             })?;
             let base_url =
                 openai_base_url.unwrap_or_else(|| "https://api.openai.com/v1".to_string());
-            let model = openai_model
-                .ok_or_else(|| anyhow!("OpenAI selected but no model configured (SAI_OPENAI_MODEL)"))?;
+            let model = openai_model.ok_or_else(|| {
+                anyhow!("OpenAI selected but no model configured (SAI_OPENAI_MODEL)")
+            })?;
             Ok(EffectiveAiConfig::OpenAI {
                 api_key,
                 base_url,
@@ -381,9 +445,7 @@ fn resolve_ai_config(global_ai: Option<AiConfig>) -> Result<EffectiveAiConfig> {
                 anyhow!("Azure selected but no deployment configured (SAI_AZURE_DEPLOYMENT)")
             })?;
             let api_version = azure_api_version.ok_or_else(|| {
-                anyhow!(
-                    "Azure selected but no API version configured (SAI_AZURE_API_VERSION)"
-                )
+                anyhow!("Azure selected but no API version configured (SAI_AZURE_API_VERSION)")
             })?;
             Ok(EffectiveAiConfig::Azure {
                 api_key,
