@@ -53,9 +53,7 @@ You tell the shell **what you want**, and SAI figures out **how** using the tool
 
 ## Installation (prebuilt binaries)
 
-Go to:
-
-### **➡ [https://github.com/soyrochus/sai/releases](https://github.comsoyrochus/sai/releases)**
+Go to: [https://github.com/soyrochus/sai/releases](https://github.com/soyrochus/sai/releases)
 
 Download the binary for your platform:
 
