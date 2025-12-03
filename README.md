@@ -1,16 +1,23 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/license-MIT-green.svg" />
-  <img src="https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-blue.svg" />
-  <img src="https://img.shields.io/github/v/release/your-org/sai" />
-  <img src="https://github.com/soyrochus/sai/actions/workflows/build.yml/badge.svg" />
-</p>
-
 # SAI
-### Tell the shell what you want, not how to do it.
+
+## Tell the shell what you want, not how to do it
+
+<!-- markdownlint-disable MD033 -->
+<p align="center">
+  <img alt="MIT license badge" src="https://img.shields.io/badge/license-MIT-green.svg" />
+  <img alt="Platform badge" src="https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-blue.svg" />
+  <img alt="Latest release badge" src="https://img.shields.io/github/v/release/your-org/sai" />
+  <img alt="Build status badge" src="https://github.com/soyrochus/sai/actions/workflows/build.yml/badge.svg" />
+  <img alt="Rust language badge" src="https://img.shields.io/badge/language-Rust-93450a?logo=rust&logoColor=white" />
+  <img alt="OpenAI provider badge" src="https://img.shields.io/badge/AI%20Provider-OpenAI-412991?logo=openai" />
+</p>
+<!-- markdownlint-enable MD033 -->
 
 **SAI** is a small, fast, Rust-based command-line tool that transforms **natural language** into **safe, real shell commands**, using an LLM — while enforcing strict guardrails to keep execution safe and predictable.
 
 It is designed for Unix-like environments but builds cleanly for macOS and Windows as well.
+
+![sai-logo](images/sai-logo-smallest.png)
 
 ---
 
@@ -47,7 +54,7 @@ You tell the shell **what you want**, and SAI figures out **how**.
 
 Go to:
 
-### **➡ [https://github.com/your-org/sai/releases](https://github.com/your-org/sai/releases)**
+### **➡ [https://github.com/soyrochus/sai/releases](https://github.com/your-org/sai/releases)**
 
 Download the binary for your platform:
 
