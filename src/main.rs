@@ -424,7 +424,7 @@ fn list_tools(global_path: &Path, prompt_path: Option<&str>) -> Result<()> {
         Some(ref prompt) if !prompt.tools.is_empty() => {
             println!("  Tools ({}):", prompt.tools.len());
             for tool in &prompt.tools {
-                println!("    - {}", tool.name);
+                println!("    - {} {}", tool.name, availability_status(&tool.name));
             }
         }
         Some(_) => println!("  Tools: (none configured)"),
@@ -441,7 +441,7 @@ fn list_tools(global_path: &Path, prompt_path: Option<&str>) -> Result<()> {
         } else {
             println!("  Tools ({}):", prompt_cfg.tools.len());
             for tool in &prompt_cfg.tools {
-                println!("    - {}", tool.name);
+                println!("    - {} {}", tool.name, availability_status(&tool.name));
             }
         }
     }
@@ -508,6 +508,29 @@ default_prompt:
     println!("Update the placeholder API credentials and add tools (e.g. with 'sai --add-prompt ...') before running sai.");
 
     Ok(())
+}
+
+fn availability_status(tool: &str) -> &'static str {
+    if Path::new(tool).is_absolute() {
+        return if Path::new(tool).exists() {
+            "[x]"
+        } else {
+            "[ ]"
+        };
+    }
+
+    env::var_os("PATH")
+        .and_then(|paths| {
+            env::split_paths(&paths).find_map(|dir| {
+                let candidate = dir.join(tool);
+                if candidate.is_file() {
+                    Some("[x]")
+                } else {
+                    None
+                }
+            })
+        })
+        .unwrap_or("[ ]")
 }
 
 /// Build the system prompt from the prompt config and return also the list of allowed tool names.

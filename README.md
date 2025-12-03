@@ -221,7 +221,8 @@ See which tools SAI will allow before running anything:
 sai --list-tools
 ```
 
-If you supply a prompt file, both sources are reported:
+If you supply a prompt file, both sources are reported, and each entry notes
+whether the tool is currently on your `PATH` (`[x]` present, `[ ]` missing):
 
 ```bash
 sai --list-tools prompts/standard-tools.yml

@@ -121,7 +121,7 @@ The merge aborts if any tool names already exist, ensuring the whitelist remains
 
 ### Tool inventory helper
 
-`sai --list-tools [prompt.yaml]` prints the tool names sourced from the global default prompt and, when a prompt path is supplied, from that file as well.  
+`sai --list-tools [prompt.yaml]` prints the tool names sourced from the global default prompt and, when a prompt path is supplied, from that file as well. Each tool entry also indicates whether it is currently discoverable on the operator's `PATH` (`[x]` present, `[ ]` missing).  
 The command is informational only; no LLM call occurs and no shell command is executed.
 
 ---
