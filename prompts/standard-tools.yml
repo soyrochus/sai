@@ -41,6 +41,8 @@ tools:
       - Use "-name", "-type", "-size", etc.
       - Prefer safe predicates; avoid complex expressions.
       - Never use "-exec" unless explicitly requested by the user.
+      - When using "-exec" for filtering, wrap related tests in parentheses and place "-print" (or "-ls" when requested) **after** the grouped expression so only matching paths are emitted.
+      - Avoid adding "-exec printf" inside a logical expression; instead rely on "-print" after the conditions succeed.
       Output format:
       - find path [conditions]
 

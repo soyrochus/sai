@@ -31,6 +31,7 @@ const PEEK_MAX_BYTES: usize = 16 * 1024;
 ///   -u / --unsafe         Disable operator-level safety checks (always implies confirm).
 ///   -p / --peek           Provide one or more sample data files for the LLM to inspect.
 ///   -s / --scope          Provide path/glob hints to narrow the command output.
+///        --list-tools     Show configured tool names and exit.
 ///        --init           Create a default ~/.config/sai/config.yaml and exit.
 ///        --create-prompt  Generate a starter prompt config (COMMAND [PATH]).
 ///        --add-prompt     Merge a prompt config file into the global config.
@@ -51,6 +52,10 @@ struct Cli {
     #[arg(long, value_name = "PATH")]
     add_prompt: Option<String>,
 
+    /// List the configured tools (global config and optional prompt file) and exit
+    #[arg(long = "list-tools")]
+    list_tools: bool,
+
     /// Ask for confirmation before executing the generated command
     #[arg(short, long)]
     confirm: bool,
@@ -70,7 +75,7 @@ struct Cli {
     scope: Option<String>,
 
     /// Either a per-call prompt config YAML file, or the natural language prompt (simple mode)
-    #[arg(required_unless_present_any = ["init", "create_prompt", "add_prompt"])]
+    #[arg(required_unless_present_any = ["init", "create_prompt", "add_prompt", "list_tools"])]
     arg1: Option<String>,
 
     /// Natural language prompt (advanced mode, when arg1 is a config file)
@@ -192,6 +197,11 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
+    if cli.list_tools {
+        list_tools(&global_config_path, cli.arg1.as_deref())?;
+        return Ok(());
+    }
+
     let arg1 = cli.arg1.clone().ok_or_else(|| {
         anyhow!("Expected a prompt or prompt config path when not running with --init")
     })?;
@@ -259,7 +269,7 @@ fn main() -> Result<()> {
     }
 
     // Execute the command
-    let status = run_command(&tokens)?;
+    let status = run_command(&cmd_line, &tokens, cli.unsafe_mode)?;
     std::process::exit(status);
 }
 
@@ -405,6 +415,40 @@ fn add_prompt_to_global(global_path: &Path, prompt_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// List tools configured in the global default prompt and, optionally, an explicit prompt file.
+fn list_tools(global_path: &Path, prompt_path: Option<&str>) -> Result<()> {
+    let global_cfg = load_global_config(global_path)?;
+
+    println!("Global config file: {}", global_path.display());
+    match global_cfg.default_prompt {
+        Some(ref prompt) if !prompt.tools.is_empty() => {
+            println!("  Tools ({}):", prompt.tools.len());
+            for tool in &prompt.tools {
+                println!("    - {}", tool.name);
+            }
+        }
+        Some(_) => println!("  Tools: (none configured)"),
+        None => println!("  Default prompt: not configured"),
+    }
+
+    if let Some(path_str) = prompt_path {
+        let path = Path::new(path_str);
+        let prompt_cfg = load_prompt_config(path)?;
+        println!();
+        println!("Prompt file: {}", path.display());
+        if prompt_cfg.tools.is_empty() {
+            println!("  Tools: (none configured)");
+        } else {
+            println!("  Tools ({}):", prompt_cfg.tools.len());
+            for tool in &prompt_cfg.tools {
+                println!("    - {}", tool.name);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn sanitize_filename(name: &str) -> String {
     let mut sanitized: String = name
         .chars()
@@ -424,7 +468,7 @@ fn sanitize_filename(name: &str) -> String {
     sanitized
 }
 
-/// Create a starter config file with placeholder API keys and a basic jq tool definition.
+/// Create a starter config file with placeholder AI settings and no default tools.
 fn init_global_config(path: &Path) -> Result<()> {
     if path.exists() {
         return Err(anyhow!(
@@ -446,26 +490,22 @@ fn init_global_config(path: &Path) -> Result<()> {
   # azure_api_key: changeme
   # azure_endpoint: https://your-azure-openai-resource.openai.azure.com
   # azure_deployment: changeme
-  # azure_api_version: 2024-02-15-preview
+    # azure_api_version: 2024-02-15-preview
 
 default_prompt:
-  meta_prompt: |
-    You are SAI, a careful command composer. Only emit a single allowed tool command.
-    Never introduce shell operators such as pipes or redirects unless the operator has
-    explicitly enabled unsafe mode.
-  tools:
-    - name: jq
-      config: |
-        Use jq to query JSON data. Provide the filter as the first argument and the
-        target file paths afterwards. Do not chain shell operators; return exactly one
-        jq command.
+    meta_prompt: |
+        You are SAI, a careful command composer. Only emit a single allowed tool command.
+        Never introduce shell operators such as pipes or redirects unless the operator has
+        explicitly enabled unsafe mode.
+        Add tools to this configuration by running "sai --add-prompt path/to/prompt.yaml".
+    tools: []
 "#;
 
     fs::write(path, template)
         .with_context(|| format!("Failed to write default config file to {}", path.display()))?;
 
     println!("Default configuration written to {}", path.display());
-    println!("Update the placeholder API credentials before running sai.");
+    println!("Update the placeholder API credentials and add tools (e.g. with 'sai --add-prompt ...') before running sai.");
 
     Ok(())
 }
@@ -632,8 +672,9 @@ fn env_or(file_value: Option<String>, env_key: &str) -> Option<String> {
 }
 
 /// Call the LLM (OpenAI or Azure) and return a single-line command string.
-/// If peek_text is Some(...), it is passed as a separate message explicitly
-/// tagged as sample data for schema inference.
+/// The optional scope hint is sent as its own message so the model can focus on
+/// relevant paths, and peek_text (when provided) is passed as a separate sample
+/// message for schema inference.
 fn call_llm(
     ai: &EffectiveAiConfig,
     system_prompt: &str,
@@ -955,14 +996,35 @@ fn confirm(
     Ok(ans == "y" || ans == "yes")
 }
 
-/// Run the command as a process (no shell, just command + args).
-fn run_command(tokens: &[String]) -> Result<i32> {
-    let mut cmd = Command::new(&tokens[0]);
-    if tokens.len() > 1 {
-        cmd.args(&tokens[1..]);
-    }
-    let status = cmd
-        .status()
-        .with_context(|| format!("Failed to execute command '{}'", tokens[0]))?;
+/// Run the command as a process. In safe mode we spawn the tool directly without shell
+/// interpolation. In unsafe mode we hand the full command line to the platform shell so
+/// pipes, redirects, and other operators function as expected.
+fn run_command(cmd_line: &str, tokens: &[String], unsafe_mode: bool) -> Result<i32> {
+    let status = if unsafe_mode {
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut command = Command::new("cmd");
+            command.arg("/C").arg(cmd_line);
+            command
+        };
+
+        #[cfg(not(windows))]
+        let mut cmd = {
+            let mut command = Command::new("sh");
+            command.arg("-c").arg(cmd_line);
+            command
+        };
+
+        cmd.status()
+            .with_context(|| format!("Failed to execute command '{}'", cmd_line))?
+    } else {
+        let mut cmd = Command::new(&tokens[0]);
+        if tokens.len() > 1 {
+            cmd.args(&tokens[1..]);
+        }
+        cmd.status()
+            .with_context(|| format!("Failed to execute command '{}'", tokens[0]))?
+    };
+
     Ok(status.code().unwrap_or(1))
 }

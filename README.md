@@ -96,7 +96,8 @@ You can bootstrap sensible defaults by running:
 sai --init
 ```
 
-This writes a starter config with placeholder API credentials and a basic `jq` tool definition.
+This writes a starter config with placeholder API credentials and no tools. Add tooling later with
+`sai --add-prompt ...` or your own YAML edits.
 
 ### Example `config.yaml`
 
@@ -211,6 +212,20 @@ sai --add-prompt prompts/jq-safe.yaml
 ```
 
 The command fails gracefully if any tool names already exist in the global config.
+
+### **List configured tools**
+
+See which tools SAI will allow before running anything:
+
+```bash
+sai --list-tools
+```
+
+If you supply a prompt file, both sources are reported:
+
+```bash
+sai --list-tools prompts/standard-tools.yml
+```
 
 ### **Starter prompt catalog**
 

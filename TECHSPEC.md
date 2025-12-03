@@ -100,7 +100,8 @@ Defines:
 ### Initialization helper
 
 Running `sai --init` writes a starter `config.yaml` at the OS location above.  
-The generated file contains placeholder API credentials (e.g., `changeme`) and a simple `jq` tool definition so first-run users can edit the file without crafting YAML from scratch. Existing configs are never overwritten.
+The generated file contains placeholder API credentials (e.g., `changeme`) and **no tools**.  
+Operators add tools later (for example via `sai --add-prompt`) so the whitelist always reflects locally installed binaries. Existing configs are never overwritten.
 
 ## 3.2 Per-call Prompt Config
 
@@ -117,6 +118,11 @@ If `path` is omitted, the file is saved as `<tool>.yaml` in the current working 
 
 `sai --add-prompt <path>` merges the tools from the provided prompt file into the global `default_prompt`.  
 The merge aborts if any tool names already exist, ensuring the whitelist remains explicit.
+
+### Tool inventory helper
+
+`sai --list-tools [prompt.yaml]` prints the tool names sourced from the global default prompt and, when a prompt path is supplied, from that file as well.  
+The command is informational only; no LLM call occurs and no shell command is executed.
 
 ---
 
