@@ -24,29 +24,17 @@ SAI enforces strong safety guarantees: only explicitly allowed tools may be used
 
 # 2. Execution Model
 
+```mermaid
+flowchart TD
+    A[User Input] --> B[Global Config]
+    B --> |AI config + default prompt| C[Prompt Config]
+    C --> |per-call or default| D[Build system prompt + tools]
+    D --> E[LLM Call]
+    E --> |OpenAI or Azure| F[Safety checks]
+    F --> G[Execution]
 ```
 
-```
-    User Input
-         │
-         ▼
-```
 
-┌──────────────────┐
-│ Global Config     │  (AI config + default prompt)
-└──────────────────┘
-│
-▼
-┌──────────────────┐
-│ Prompt Config     │  (per-call or default)
-└──────────────────┘
-│
-▼
-┌──────────────────┐
-│ Build system      │
-│ prompt + tools    │
-└──────────────────┘
-│
 ## 2.1 Module Layout
 
 - `main`: minimalist entry point delegating to `app::run()`.
@@ -61,20 +49,7 @@ SAI enforces strong safety guarantees: only explicitly allowed tools may be used
 - `ops`: shared helpers for `--init`, `--create-prompt`, `--add-prompt`, and `--list-tools`.
 
 Each module is testable in isolation, with the traits (`CommandGenerator`, `CommandExecutor`) providing seam points for mocking inside unit tests.
-▼
-┌──────────────────┐
-│ LLM Call          │  (OpenAI or Azure)
-└──────────────────┘
-│
-▼
-┌──────────────────┐
-│ Safety checks     │
-└──────────────────┘
-│
-▼
-Execution
 
-```
 ---
 
 # 3. Configuration Model

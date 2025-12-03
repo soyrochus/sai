@@ -15,7 +15,7 @@
 
 **SAI** is a small, fast, Rust-based command-line tool that transforms **natural language** into **safe, real shell commands**, using an LLM — while enforcing strict guardrails to keep execution safe and predictable.
 
-It is designed for Unix-like environments but builds cleanly for macOS and Windows as well.
+It is designed for Unix-like environments like Linux and MacOS but builds cleanly on Windows as well.
 
 ![sai-logo](images/sai-logo-smallest.png)
 
@@ -235,9 +235,11 @@ sai --list-tools prompts/standard-tools.yml
 
 The repo ships with ready-to-adapt prompt configs under `prompts/`:
 
-- [`prompts/standard-tools.yml`](prompts/standard-tools.yml)
-- [`prompts/data-focussed-tool.yml`](prompts/data-focussed-tool.yml)
-- [`prompts/safe-destructive-tools.yml`](prompts/safe-destructive-tools.yml)
+- [`prompts/standard-tools.yml`](prompts/standard-tools.yml) – Common Unix tools for file inspection and text processing
+- [`prompts/data-focussed-tool.yml`](prompts/data-focussed-tool.yml) – Data transformation tools (jq, yq, mlr, csvkit, sed, awk)
+- [`prompts/safe-destructive-tools.yml`](prompts/safe-destructive-tools.yml) – Tools that can modify files (use with caution)
+- [`prompts/git-safe.yml`](prompts/git-safe.yml) – Read-only git operations (status, log, diff, show, blame, grep, etc.)
+- [`prompts/git-full.yml`](prompts/git-full.yml) – Full git workflow including commits, pushes, merges, rebases (always use with --confirm)
 
 ---
 
