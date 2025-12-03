@@ -6,8 +6,8 @@
 <p align="center">
   <img alt="MIT license badge" src="https://img.shields.io/badge/license-MIT-green.svg" />
   <img alt="Platform badge" src="https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-blue.svg" />
-  <img alt="Latest release badge" src="https://img.shields.io/github/v/release/your-org/sai" />
-  <img alt="Build status badge" src="https://github.com/soyrochus/sai/actions/workflows/build.yml/badge.svg" />
+  <img alt="Latest release badge" src="https://img.shields.io/github/v/release/soyrochus/sai?include_prereleases" />
+  <img alt="Build status badge" src="https://github.com/soyrochus/sai/actions/workflows/build.yaml/badge.svg" />
   <img alt="Rust language badge" src="https://img.shields.io/badge/language-Rust-93450a?logo=rust&logoColor=white" />
   <img alt="OpenAI provider badge" src="https://img.shields.io/badge/AI%20Provider-OpenAI-412991?logo=openai" />
 </p>
