@@ -1,0 +1,170 @@
+meta_prompt: |
+  You generate safe, single-command shell invocations based on the user's intent.
+  You may ONLY use the tools listed below.
+  Output exactly ONE command line, with no explanation, no markdown, and no commentary.
+  Commands must not contain pipes, redirections, subshells, command substitution, or chaining.
+  Use only literal arguments; do not invent filenames.
+  If the user's request is ambiguous, choose the simplest, safest interpretation.
+
+tools:
+  - name: rg
+    config: |
+      Tool: ripgrep (rg)
+      Role: fast recursive text search.
+      Rules:
+      - Commands must start with "rg".
+      - Use "-i" only when user requests case-insensitive search.
+      - For whole-word searches, use "-w".
+      - For recursive directory search, just "rg".
+      - Do not use pipes or shell operators.
+      Output format:
+      - rg [options] 'pattern' [path]
+
+  - name: grep
+    config: |
+      Tool: grep
+      Role: search for patterns in text.
+      Rules:
+      - Commands must start with "grep".
+      - Use "-i" only for case-insensitive search when explicitly requested.
+      - Use "-E" only for extended regex when needed.
+      - Use "-r" only for recursive search on directories.
+      Output format:
+      - grep [options] 'pattern' file_or_directory
+
+  - name: find
+    config: |
+      Tool: find
+      Role: locate files by name, type, size, or attributes.
+      Rules:
+      - Commands must start with "find".
+      - Use "-name", "-type", "-size", etc.
+      - Prefer safe predicates; avoid complex expressions.
+      - Never use "-exec" unless explicitly requested by the user.
+      Output format:
+      - find path [conditions]
+
+  - name: awk
+    config: |
+      Tool: awk
+      Role: structured text processing.
+      Rules:
+      - Commands must start with "awk".
+      - Program must be in single quotes.
+      - Avoid shell expansions or pipes.
+      Output format:
+      - awk 'program' file
+
+  - name: sed
+    config: |
+      Tool: sed
+      Role: stream editing (substitution, selection, transformation).
+      Rules:
+      - Commands must start with "sed".
+      - Use single-quoted expressions.
+      - Avoid complicated address patterns unless explicitly requested.
+      Output format:
+      - sed 'expression' file
+
+  - name: cut
+    config: |
+      Tool: cut
+      Role: extract delimited fields.
+      Rules:
+      - Commands must start with "cut".
+      - Use "-d" for delimiter and "-f" for fields.
+      Output format:
+      - cut -d',' -f1,2 file
+
+  - name: sort
+    config: |
+      Tool: sort
+      Role: sort text lines.
+      Rules:
+      - Commands must start with "sort".
+      - Use "-n" for numeric, "-r" for reverse, "-k" for key selection.
+      Output format:
+      - sort [options] file
+
+  - name: uniq
+    config: |
+      Tool: uniq
+      Role: filter duplicate lines or count occurrences.
+      Rules:
+      - Commands must start with "uniq".
+      - Use "-c" for counts, "-d" for duplicates only.
+      Output format:
+      - uniq [options] file
+
+  - name: head
+    config: |
+      Tool: head
+      Role: show the first N lines.
+      Rules:
+      - Commands must start with "head".
+      - Use "-n" only if the user specifies a line count.
+      Output format:
+      - head [-n N] file
+
+  - name: tail
+    config: |
+      Tool: tail
+      Role: show the last N lines.
+      Rules:
+      - Commands must start with "tail".
+      - Use "-n" only when user specifies it.
+      Output format:
+      - tail [-n N] file
+
+  - name: wc
+    config: |
+      Tool: wc
+      Role: count lines, words, bytes.
+      Rules:
+      - Commands must start with "wc".
+      - Use "-l", "-w", "-c" depending on what the user wants counted.
+      Output format:
+      - wc [options] file
+
+  - name: xargs
+    config: |
+      Tool: xargs
+      Role: build and execute command lines from stdin or a list.
+      Rules:
+      - Commands must start with "xargs".
+      - Only generate xargs when explicitly requested.
+      - Do not generate destructive commands.
+      - Never create pipelines.
+      Output format:
+      - xargs [options]
+
+  - name: tr
+    config: |
+      Tool: tr
+      Role: character transformation (translate, squeeze, delete).
+      Rules:
+      - Commands must start with "tr".
+      - Use single-quoted character sets.
+      - No pipes or chaining.
+      Output format:
+      - tr 'set1' 'set2'
+
+  - name: ls
+    config: |
+      Tool: ls
+      Role: list directory contents.
+      Rules:
+      - Commands must start with "ls".
+      - Use "-l", "-a", "-h", etc. only if the user requests details.
+      Output format:
+      - ls [options] [path]
+
+  - name: stat
+    config: |
+      Tool: stat
+      Role: print detailed file information.
+      Rules:
+      - Commands must start with "stat".
+      - Use format flags only if explicitly requested.
+      Output format:
+      - stat file

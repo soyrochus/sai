@@ -1,3 +1,5 @@
+<!-- markdownlint-disable MD025 MD040 MD004 MD022 MD031 MD032 MD046 -->
+
 # SAI Technical Specification
 **Version 1.0**  
 **MIT Licensed**
@@ -94,9 +96,11 @@ Environment variables override these fields.
 
 ### `default_prompt`  
 Defines:
-- meta prompt
-- allowed tools
-- their instructions to the LLM
+
+### Initialization helper
+
+Running `sai --init` writes a starter `config.yaml` at the OS location above.  
+The generated file contains placeholder API credentials (e.g., `changeme`) and a simple `jq` tool definition so first-run users can edit the file without crafting YAML from scratch. Existing configs are never overwritten.
 
 ## 3.2 Per-call Prompt Config
 
@@ -105,6 +109,14 @@ First positional argument in advanced mode.
 Same format as `default_prompt`.
 
 If present, it **replaces** the default prompt.
+
+### Prompt authoring helpers
+
+`sai --create-prompt <tool> [path]` emits a template prompt config for a single tool.  
+If `path` is omitted, the file is saved as `<tool>.yaml` in the current working directory.
+
+`sai --add-prompt <path>` merges the tools from the provided prompt file into the global `default_prompt`.  
+The merge aborts if any tool names already exist, ensuring the whitelist remains explicit.
 
 ---
 
@@ -121,7 +133,10 @@ SAI constructs the final LLM context as:
 2. **User message**  
    The natural language request.
 
-3. **User (data sample) message** *(optional)*  
+3. **User (scope hint) message** *(optional)*  
+   Included when the operator supplies `-s/--scope`; provides glob/path hints such as `logs/**/*.json` or free-form descriptions ("only PDF documents").
+
+4. **User (data sample) message** *(optional)*  
    Only added when using `--peek`.
 
 Example:

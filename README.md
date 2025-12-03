@@ -2,11 +2,11 @@
   <img src="https://img.shields.io/badge/license-MIT-green.svg" />
   <img src="https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-blue.svg" />
   <img src="https://img.shields.io/github/v/release/your-org/sai" />
-  <img src="https://github.com/your-org/sai/actions/workflows/build.yml/badge.svg" />
+  <img src="https://github.com/soyrochus/sai/actions/workflows/build.yml/badge.svg" />
 </p>
 
-# **SAI**
-### **Tell the shell what you want, not how to do it.**
+# SAI
+### Tell the shell what you want, not how to do it.
 
 **SAI** is a small, fast, Rust-based command-line tool that transforms **natural language** into **safe, real shell commands**, using an LLM — while enforcing strict guardrails to keep execution safe and predictable.
 
@@ -14,7 +14,7 @@ It is designed for Unix-like environments but builds cleanly for macOS and Windo
 
 ---
 
-## ✨ **What SAI Does**
+## What SAI Does
 
 SAI takes two things:
 
@@ -43,7 +43,7 @@ You tell the shell **what you want**, and SAI figures out **how**.
 
 ---
 
-## 🛠️ Installation (prebuilt binaries)
+## Installation (prebuilt binaries)
 
 Go to:
 
@@ -68,7 +68,7 @@ That’s it.
 
 ---
 
-## 📁 Configuration
+## Configuration
 
 SAI loads its global config from the OS-standard location:
 
@@ -82,6 +82,14 @@ This file contains:
 
 1. **AI provider configuration** (OpenAI or Azure OpenAI)
 2. **Default prompt/tools** for “simple mode”
+
+You can bootstrap sensible defaults by running:
+
+```bash
+sai --init
+```
+
+This writes a starter config with placeholder API credentials and a basic `jq` tool definition.
 
 ### Example `config.yaml`
 
@@ -113,7 +121,7 @@ Environment variables always override AI configuration.
 
 ---
 
-## 🧭 Usage
+## Usage
 
 ### **Simple mode**
 
@@ -139,6 +147,16 @@ sai -p users.json "List active users"
 
 This lets the LLM infer the **structure** of the data (truncated to 16 KB per file).
 
+### **Scope hint**
+
+Provide a path or glob so the LLM focuses on the right files:
+
+```bash
+sai -s "logs/**/*.json" "Summarize fatal errors"
+```
+
+You can use any descriptive text (e.g., "only PDF reports"), and the hint is passed as a separate message alongside the natural language prompt.
+
 ### **Unsafe mode**
 
 Allows pipes, redirects, etc.
@@ -156,15 +174,48 @@ sai -c "Show me all user ids"
 
 Confirmation shows:
 
-* global config path
-* prompt config path
-* natural language prompt
-* generated command
-* Y/N choice
+- global config path
+- prompt config path
+- natural language prompt
+- scope hint (if provided)
+- generated command
+- Y/N choice
+
+### Create a prompt template
+
+Generate a per-command prompt config with placeholders:
+
+```bash
+sai --create-prompt jq
+```
+
+The file defaults to `jq.yaml` in the current directory. You can specify a custom path:
+
+```bash
+sai --create-prompt jq prompts/jq-safe.yaml
+```
+
+### **Merge prompt tools into global config**
+
+Add tools from a prompt file to your global default config:
+
+```bash
+sai --add-prompt prompts/jq-safe.yaml
+```
+
+The command fails gracefully if any tool names already exist in the global config.
+
+### **Starter prompt catalog**
+
+The repo ships with ready-to-adapt prompt configs under `prompts/`:
+
+- [`prompts/standard-tools.yml`](prompts/standard-tools.yml)
+- [`prompts/data-focussed-tool.yml`](prompts/data-focussed-tool.yml)
+- [`prompts/safe-destructive-tools.yml`](prompts/safe-destructive-tools.yml)
 
 ---
 
-## 💡 Philosophy
+## Philosophy
 
 SAI has three principles:
 
@@ -179,16 +230,16 @@ SAI has three principles:
 
 ---
 
-## 📝 License
+## Principles of Participation
 
-MIT License.
-See `LICENSE` for details.
+Everyone is invited and welcome to contribute: open issues, propose pull requests, share ideas, or help improve documentation. Participation is open to all, regardless of background or viewpoint.
 
----
+This project follows the [FOSS Pluralism Manifesto](./FOSS_PLURALISM_MANIFESTO.md), which affirms respect for people, freedom to critique ideas, and space for diverse perspectives.
 
-## 🤝 Contributing
 
-PRs welcome.
-Please keep implementations small, auditable, and safe by default.
+## License and Copyright
 
----
+Copyright (c) 2025, Iwan van der Kleijn
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+

@@ -27,10 +27,13 @@ const PEEK_MAX_BYTES: usize = 16 * 1024;
 ///       -> uses prompt/tools from config_prompt.yml
 ///
 /// Options:
-///   -c / --confirm   Ask for confirmation before executing the generated command.
-///   -u / --unsafe    Disable operator-level safety checks (always implies confirm).
-///   -p / --peek      Provide one or more sample data files for the LLM to inspect.
-///        --init      Create a default ~/.config/sai/config.yaml and exit.
+///   -c / --confirm        Ask for confirmation before executing the generated command.
+///   -u / --unsafe         Disable operator-level safety checks (always implies confirm).
+///   -p / --peek           Provide one or more sample data files for the LLM to inspect.
+///   -s / --scope          Provide path/glob hints to narrow the command output.
+///        --init           Create a default ~/.config/sai/config.yaml and exit.
+///        --create-prompt  Generate a starter prompt config (COMMAND [PATH]).
+///        --add-prompt     Merge a prompt config file into the global config.
 #[derive(Parser, Debug)]
 #[command(name = "sai")]
 #[command(version)]
@@ -39,6 +42,14 @@ struct Cli {
     /// Initialize the default config file with placeholder values
     #[arg(long)]
     init: bool,
+
+    /// Create a per-call prompt config template for the specified command and optional path
+    #[arg(long, value_names = ["COMMAND", "PATH"], num_args = 1..=2)]
+    create_prompt: Option<Vec<String>>,
+
+    /// Merge tools from a prompt config file into the global default prompt
+    #[arg(long, value_name = "PATH")]
+    add_prompt: Option<String>,
 
     /// Ask for confirmation before executing the generated command
     #[arg(short, long)]
@@ -54,8 +65,12 @@ struct Cli {
     #[arg(short = 'p', long = "peek")]
     peek: Vec<String>,
 
+    /// Provide a path or glob hint to narrow the LLM response
+    #[arg(short = 's', long = "scope", value_name = "PATTERN")]
+    scope: Option<String>,
+
     /// Either a per-call prompt config YAML file, or the natural language prompt (simple mode)
-    #[arg(required_unless_present = "init")]
+    #[arg(required_unless_present_any = ["init", "create_prompt", "add_prompt"])]
     arg1: Option<String>,
 
     /// Natural language prompt (advanced mode, when arg1 is a config file)
@@ -63,51 +78,51 @@ struct Cli {
 }
 
 /// Global config file structure: infra + optional default prompt.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct GlobalConfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     ai: Option<AiConfig>,
 
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     default_prompt: Option<PromptConfig>,
 }
 
 /// AI configuration that may come from file and/or environment.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct AiConfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     provider: Option<String>, // "openai" or "azure"
 
     // OpenAI
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     openai_api_key: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     openai_base_url: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     openai_model: Option<String>,
 
     // Azure OpenAI
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     azure_api_key: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     azure_endpoint: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     azure_deployment: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     azure_api_version: Option<String>,
 }
 
 /// Prompt configuration (also used as per-call config).
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct PromptConfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     meta_prompt: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tools: Vec<ToolConfig>,
 }
 
 /// Single tool description for the LLM.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ToolConfig {
     name: String,
     config: String,
@@ -167,6 +182,16 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
+    if let Some(values) = cli.create_prompt.as_ref() {
+        create_prompt_template(values)?;
+        return Ok(());
+    }
+
+    if let Some(path) = cli.add_prompt.as_ref() {
+        add_prompt_to_global(&global_config_path, Path::new(path))?;
+        return Ok(());
+    }
+
     let arg1 = cli.arg1.clone().ok_or_else(|| {
         anyhow!("Expected a prompt or prompt config path when not running with --init")
     })?;
@@ -207,6 +232,7 @@ fn main() -> Result<()> {
         &effective_ai,
         &system_prompt,
         &nl_prompt,
+        cli.scope.as_deref(),
         peek_context.as_deref(),
     )
     .context("Failed to obtain command from LLM")?;
@@ -224,6 +250,7 @@ fn main() -> Result<()> {
             &global_config_path,
             prompt_source.as_deref(),
             &nl_prompt,
+            cli.scope.as_deref(),
             &cmd_line,
         )? {
             eprintln!("Cancelled.");
@@ -262,6 +289,139 @@ fn load_prompt_config(path: &Path) -> Result<PromptConfig> {
     let cfg: PromptConfig = serde_yaml::from_str(&content)
         .with_context(|| format!("Failed to parse prompt config YAML {}", path.display()))?;
     Ok(cfg)
+}
+
+/// Create a template prompt config for a specific command, storing it at the requested path.
+fn create_prompt_template(values: &[String]) -> Result<()> {
+    if values.is_empty() {
+        return Err(anyhow!("--create-prompt requires at least a command name"));
+    }
+
+    let command = &values[0];
+    let sanitized = sanitize_filename(command);
+    let cwd = env::current_dir().context("Failed to determine current working directory")?;
+
+    let mut path = if let Some(custom_path) = values.get(1) {
+        PathBuf::from(custom_path)
+    } else {
+        PathBuf::from(format!("{}.yaml", sanitized))
+    };
+
+    if path.is_relative() {
+        path = cwd.join(path);
+    }
+
+    if path.exists() {
+        return Err(anyhow!(
+            "Prompt config already exists at {}. Refusing to overwrite.",
+            path.display()
+        ));
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create directory {}", parent.display()))?;
+    }
+
+    let template = format!(
+        "meta_prompt: |\n  Compose a single {cmd} command that satisfies the user request.\n  Do not add shell operators or use disallowed tools.\ntools:\n  - name: {cmd}\n    config: |\n      Accept a natural language request and emit one {cmd} invocation.\n      Include all required flags explicitly and avoid chaining other commands.\n",
+        cmd = command
+    );
+
+    fs::write(&path, template).with_context(|| {
+        format!(
+            "Failed to write prompt config template to {}",
+            path.display()
+        )
+    })?;
+
+    println!(
+        "Prompt config template for '{}' written to {}",
+        command,
+        path.display()
+    );
+
+    Ok(())
+}
+
+/// Merge a prompt config's tools into the global default prompt without overwriting duplicates.
+fn add_prompt_to_global(global_path: &Path, prompt_path: &Path) -> Result<()> {
+    if !prompt_path.exists() {
+        return Err(anyhow!(
+            "Prompt file {} does not exist",
+            prompt_path.display()
+        ));
+    }
+
+    let prompt_cfg = load_prompt_config(prompt_path)?;
+    if prompt_cfg.tools.is_empty() {
+        return Err(anyhow!("Prompt config must define at least one tool"));
+    }
+
+    let mut global_cfg = load_global_config(global_path)?;
+    let default_prompt = global_cfg
+        .default_prompt
+        .get_or_insert_with(PromptConfig::default);
+
+    for tool in &prompt_cfg.tools {
+        if default_prompt
+            .tools
+            .iter()
+            .any(|existing| existing.name == tool.name)
+        {
+            return Err(anyhow!(
+                "Tool '{}' already exists in the global default prompt",
+                tool.name
+            ));
+        }
+    }
+
+    if default_prompt.meta_prompt.is_none() {
+        default_prompt.meta_prompt = prompt_cfg.meta_prompt.clone();
+    }
+
+    default_prompt.tools.extend(prompt_cfg.tools.clone());
+
+    if let Some(parent) = global_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create config directory {}", parent.display()))?;
+    }
+
+    let mut serialized =
+        serde_yaml::to_string(&global_cfg).context("Failed to serialize merged global config")?;
+    if !serialized.ends_with('\n') {
+        serialized.push('\n');
+    }
+
+    fs::write(global_path, serialized)
+        .with_context(|| format!("Failed to write merged config to {}", global_path.display()))?;
+
+    println!(
+        "Merged prompt {} into {}",
+        prompt_path.display(),
+        global_path.display()
+    );
+
+    Ok(())
+}
+
+fn sanitize_filename(name: &str) -> String {
+    let mut sanitized: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    if sanitized.is_empty() || sanitized.chars().all(|c| c == '_') {
+        sanitized = "prompt".to_string();
+    }
+
+    sanitized
 }
 
 /// Create a starter config file with placeholder API keys and a basic jq tool definition.
@@ -478,6 +638,7 @@ fn call_llm(
     ai: &EffectiveAiConfig,
     system_prompt: &str,
     nl_prompt: &str,
+    scope_hint: Option<&str>,
     peek_text: Option<&str>,
 ) -> Result<String> {
     let client = Client::new();
@@ -492,6 +653,17 @@ fn call_llm(
             content: nl_prompt.to_string(),
         },
     ];
+
+    if let Some(scope) = scope_hint {
+        messages.push(Message {
+            role: "user".to_string(),
+            content: format!(
+                "Focus your command on files or paths matching this scope:
+{}",
+                scope
+            ),
+        });
+    }
 
     if let Some(peek) = peek_text {
         messages.push(Message {
@@ -753,6 +925,7 @@ fn confirm(
     global_cfg_path: &Path,
     prompt_cfg_path: Option<&Path>,
     nl_prompt: &str,
+    scope_hint: Option<&str>,
     cmd_line: &str,
 ) -> Result<bool> {
     eprintln!("Global config file: {}", global_cfg_path.display());
@@ -765,6 +938,11 @@ fn confirm(
     eprintln!("Natural language prompt:");
     eprintln!("  {}", nl_prompt);
     eprintln!();
+    if let Some(scope) = scope_hint {
+        eprintln!("Scope hint:");
+        eprintln!("  {}", scope);
+        eprintln!();
+    }
     eprintln!("LLM output (command):");
     eprintln!("  {}", cmd_line);
     eprintln!();
