@@ -47,6 +47,20 @@ SAI enforces strong safety guarantees: only explicitly allowed tools may be used
 │ prompt + tools    │
 └──────────────────┘
 │
+## 2.1 Module Layout
+
+- `main`: minimalist entry point delegating to `app::run()`.
+- `app`: orchestrates CLI parsing, configuration loading, LLM invocation, confirmation, and command execution. Provides `run_with_dependencies` so tests can inject fakes.
+- `cli`: clap-derived `Cli` structure describing every command-line flag.
+- `config`: strongly typed configuration models plus loading and environment override resolution. Exposes `EffectiveAiConfig` used by the generator layer.
+- `prompt`: builds the system prompt and allowed tool whitelist from a `PromptConfig` instance.
+- `peek`: constructs the optional peek context, applying the 16 KiB truncation rule per file.
+- `llm`: defines the `CommandGenerator` trait and its default `HttpCommandGenerator` implementation backed by `reqwest`.
+- `safety`: rejects disallowed tools or shell operators and returns the parsed token list.
+- `executor`: houses the `CommandExecutor` trait and the default `ShellCommandExecutor` that toggles between direct spawning and shell delegation when `--unsafe` is set.
+- `ops`: shared helpers for `--init`, `--create-prompt`, `--add-prompt`, and `--list-tools`.
+
+Each module is testable in isolation, with the traits (`CommandGenerator`, `CommandExecutor`) providing seam points for mocking inside unit tests.
 ▼
 ┌──────────────────┐
 │ LLM Call          │  (OpenAI or Azure)
@@ -61,7 +75,6 @@ SAI enforces strong safety guarantees: only explicitly allowed tools may be used
 Execution
 
 ```
-
 ---
 
 # 3. Configuration Model
@@ -127,6 +140,8 @@ The command is informational only; no LLM call occurs and no shell command is ex
 ---
 
 # 4. LLM Prompt Construction
+
+The `llm` module exposes a `CommandGenerator` trait so different backends (HTTP, mock, future streaming) can plug in. The default `HttpCommandGenerator` builds the following message sequence before issuing a blocking `reqwest` request:
 
 SAI constructs the final LLM context as:
 
@@ -282,18 +297,23 @@ sai -u "Count unique identifiers then sort by frequency"
 
 # 8. Execution Model
 
-SAI executes commands via:
+The `executor` module defines a `CommandExecutor` trait so alternative execution strategies (dry runs, logging, sandboxing) can be substituted. The default `ShellCommandExecutor` behaves as follows:
 
-```rust
-Command::new(tokens[0]).args(&tokens[1..])
-```
+- **Safe mode:** spawns the tool directly with `Command::new(tokens[0]).args(&tokens[1..])`, preventing shell interpolation.
+- **Unsafe mode:** delegates to the platform shell (`sh -c` on Unix, `cmd /C` on Windows) so that pipes and redirects function while still funnelling through the confirmation gate.
 
-No shell interpolation is used.
-This avoids unintended interpretation of token strings.
+This split keeps the “no shell by default” invariant while still enabling power users to opt into shell semantics explicitly.
 
 ---
 
-# 9. Error Handling
+# 9. Testing Strategy
+
+- Module-level unit tests cover prompt building, peek truncation, configuration merging, operator detection, and executor behaviour. Each test invokes the respective module in isolation without hitting the network.
+- The `app::run_with_dependencies` helper allows integration-style tests to inject mock implementations of `CommandGenerator` or `CommandExecutor` when richer scenarios are needed.
+- `tempfile`-backed fixtures keep filesystem manipulations isolated to throwaway directories.
+- Execute `cargo test` to run the suite; no external services are contacted.
+
+# 10. Error Handling
 
 Typical error conditions:
 
@@ -308,7 +328,7 @@ All errors include clear diagnostic messages.
 
 ---
 
-# 10. Build and Release
+# 11. Build and Release
 
 SAI provides a GitHub Actions workflow building:
 
@@ -320,7 +340,7 @@ All builds use Rust stable and upload artifacts for release.
 
 ---
 
-# 11. License
+# 12. License
 
 MIT License.
 

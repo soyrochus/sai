@@ -1,6 +1,6 @@
 [package]
 name = "sai"
-version = "0.1.0"
+version = "0.9.0"
 edition = "2021"
 authors = ["Iwan van der Kleijn <iwanvanderkleijn@gmail.com>"]
 license = "MIT"
@@ -35,3 +35,6 @@ shell-words = "1.1.0"
 # If you later decide to add logging, add env_logger + log here:
 # log = "0.4"
 # env_logger = "0.11"
+
+[dev-dependencies]
+tempfile = "3"

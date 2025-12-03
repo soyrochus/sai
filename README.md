@@ -34,19 +34,20 @@ And it produces:
 - With **no shell operators**, **no pipes**, **no redirections**  
 - Unless you explicitly allow it with `--unsafe`
 
-Example:
+Examples (runnable from the repo root with `prompts/standard-tools.yml`):
 
 ```bash
-sai "List all active users showing id and email in users.json"
-````
+sai prompts/standard-tools.yml "Show where the trait CommandGenerator is defined in src"
+>>  rg 'trait CommandGenerator' src
 
-SAI reads your default config, calls the LLM with the tool instructions and (optionally) a data sample, then produces something like:
+sai prompts/standard-tools.yml "List every Rust source file under src"
+>> find src -type f -name '*.rs'
 
-```bash
->> jq '.users[] | select(.active) | {id, email}' users.json
+sai prompts/standard-tools.yml "Count lines in src/app.rs"
+>> wc -l src/app.rs
 ```
 
-You tell the shell **what you want**, and SAI figures out **how**.
+You tell the shell **what you want**, and SAI figures out **how** using the tools you have whitelisted.
 
 ---
 
@@ -54,7 +55,7 @@ You tell the shell **what you want**, and SAI figures out **how**.
 
 Go to:
 
-### **➡ [https://github.com/soyrochus/sai/releases](https://github.com/your-org/sai/releases)**
+### **➡ [https://github.com/soyrochus/sai/releases](https://github.comsoyrochus/sai/releases)**
 
 Download the binary for your platform:
 
@@ -65,6 +66,8 @@ Download the binary for your platform:
 | Windows | `sai.exe`                                               |
 
 Make it executable and put it in your PATH:
+
+Example: Linux
 
 ```bash
 chmod +x sai
@@ -104,7 +107,7 @@ This writes a starter config with placeholder API credentials and no tools. Add 
 ```yaml
 ai:
   provider: openai
-  openai_api_key: "$OPENAI_API_KEY"
+  openai_api_key: "replace_with_your_key"
   openai_model: "gpt-5.1-mini"
 
 default_prompt:
@@ -237,6 +240,19 @@ The repo ships with ready-to-adapt prompt configs under `prompts/`:
 - [`prompts/safe-destructive-tools.yml`](prompts/safe-destructive-tools.yml)
 
 ---
+
+## Architecture Overview
+
+- `src/main.rs`: minimal bootstrap that calls into the real application logic.
+- `src/app.rs`: orchestrates CLI parsing, configuration loading, LLM invocation, confirmation, and command execution. Exposes `run_with_dependencies` for dependency injection during tests.
+- Supporting modules isolate responsibilities: `cli` (clap parser), `config` (YAML + env resolution), `prompt` (system prompt builder), `peek` (sample ingestion), `llm` (CommandGenerator trait + HTTP backend), `safety` (operator checks), `executor` (CommandExecutor trait + shell bridge), and `ops` (init/create/add/list helpers).
+- The trait boundaries (`CommandGenerator`, `CommandExecutor`) allow swapping in mocks or alternative implementations (e.g., offline generators or dry-run executors) without touching the application core.
+
+## Development
+
+- Format with `cargo fmt`.
+- Run the unit suite with `cargo test`; it exercises filesystem helpers via `tempfile` and stays offline.
+- Inspect or extend the technical deep dive in `TECHSPEC.md` for module-level rationale and expected behaviours.
 
 ## Philosophy
 
