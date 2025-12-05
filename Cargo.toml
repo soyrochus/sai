@@ -1,6 +1,6 @@
 [package]
 name = "sai"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2021"
 authors = ["Iwan van der Kleijn <iwanvanderkleijn@gmail.com>"]
 license = "MIT"

@@ -4,7 +4,7 @@ use clap::Parser;
 #[derive(Parser, Debug, Clone)]
 #[command(name = "sai")]
 #[command(version)]
-#[command(about = "AI-powered, YAML-configured command executor", long_about = None)]
+#[command(about = "AI-powered, YAML-configured command executor\nTell the shell what you want, not how to do it", long_about = None)]
 pub struct Cli {
     /// Initialize the default config file with placeholder values
     #[arg(long)]
