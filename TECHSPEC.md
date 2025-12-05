@@ -277,10 +277,10 @@ sai -u "Count unique identifiers then sort by frequency"
 
 The `executor` module defines a `CommandExecutor` trait so alternative execution strategies (dry runs, logging, sandboxing) can be substituted. The default `ShellCommandExecutor` behaves as follows:
 
-- **Safe mode:** spawns the tool directly with `Command::new(tokens[0]).args(&tokens[1..])`, preventing shell interpolation.
+- **Safe mode:** spawns the tool directly with `Command::new(tokens[0]).args(&tokens[1..])`, preventing shell interpolation. Before execution, glob patterns (containing `*`, `?`, or `[`) in arguments are safely expanded using the `glob` crate. If a pattern matches files, those paths are passed to the command; if not, the literal string is used. This allows commands like `wc -l src/*` to work naturally without requiring shell invocation.
 - **Unsafe mode:** delegates to the platform shell (`sh -c` on Unix, `cmd /C` on Windows) so that pipes and redirects function while still funnelling through the confirmation gate.
 
-This split keeps the “no shell by default” invariant while still enabling power users to opt into shell semantics explicitly.
+This split keeps the "no shell by default" invariant while still enabling power users to opt into shell semantics explicitly.
 
 ---
 
