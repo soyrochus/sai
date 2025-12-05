@@ -1,4 +1,5 @@
 use crate::config::EffectiveAiConfig;
+use crate::scope::build_scope_dot_listing;
 use anyhow::{anyhow, Context, Result};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
@@ -53,12 +54,22 @@ impl CommandGenerator for HttpCommandGenerator {
         ];
 
         if let Some(scope) = scope_hint {
-            messages.push(Message {
-                role: "user".to_string(),
-                content: format!(
+            let scope_content = if scope == "." {
+                let listing = build_scope_dot_listing()?;
+                format!(
+                    "Scope: current directory.\nHere is a non-recursive listing of the working directory:\n{}",
+                    listing
+                )
+            } else {
+                format!(
                     "Focus your command on files or paths matching this scope:\n{}",
                     scope
-                ),
+                )
+            };
+
+            messages.push(Message {
+                role: "user".to_string(),
+                content: scope_content,
             });
         }
 

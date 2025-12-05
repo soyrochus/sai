@@ -5,6 +5,7 @@ mod executor;
 mod llm;
 mod ops;
 mod peek;
+mod scope;
 mod prompt;
 mod safety;
 

@@ -166,6 +166,8 @@ sai -s "logs/**/*.json" "Summarize fatal errors"
 
 You can use any descriptive text (e.g., "only PDF reports"), and the hint is passed as a separate message alongside the natural language prompt.
 
+Special case: `-s .` injects a non-recursive listing of the current working directory into the LLM context (bounded by an internal size limit). This helps the model understand what files exist without you typing the names.
+
 ### **Unsafe mode**
 
 Allows pipes, redirects, etc.
@@ -212,7 +214,13 @@ Add tools from a prompt file to your global default config:
 sai --add-prompt prompts/jq-safe.yaml
 ```
 
-The command fails gracefully if any tool names already exist in the global config.
+If any tool names already exist, SAI shows both definitions and lets you choose per conflict:
+
+- **O**verwrite the global definition with the imported one
+- **S**kip the imported definition and keep the global one
+- **C**ancel the whole import (no changes applied)
+
+In non-interactive contexts (no TTY), duplicates cause a clear error so you can resolve interactively later.
 
 ### **List configured tools**
 
@@ -281,4 +289,3 @@ This project follows the [FOSS Pluralism Manifesto](./FOSS_PLURALISM_MANIFESTO.m
 Copyright (c) 2025, Iwan van der Kleijn
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-

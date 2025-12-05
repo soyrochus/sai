@@ -46,7 +46,8 @@ flowchart TD
 - `llm`: defines the `CommandGenerator` trait and its default `HttpCommandGenerator` implementation backed by `reqwest`.
 - `safety`: rejects disallowed tools or shell operators and returns the parsed token list.
 - `executor`: houses the `CommandExecutor` trait and the default `ShellCommandExecutor` that toggles between direct spawning and shell delegation when `--unsafe` is set.
-- `ops`: shared helpers for `--init`, `--create-prompt`, `--add-prompt`, and `--list-tools`.
+- `ops`: shared helpers for `--init`, `--create-prompt`, `--add-prompt`, and `--list-tools`, including the duplicate-resolution helper used during prompt merges.
+- `scope`: utilities for building scope-aware context (currently the `"."` directory listing helper).
 
 Each module is testable in isolation, with the traits (`CommandGenerator`, `CommandExecutor`) providing seam points for mocking inside unit tests.
 
@@ -105,7 +106,8 @@ If present, it **replaces** the default prompt.
 If `path` is omitted, the file is saved as `<tool>.yaml` in the current working directory.
 
 `sai --add-prompt <path>` merges the tools from the provided prompt file into the global `default_prompt`.  
-The merge aborts if any tool names already exist, ensuring the whitelist remains explicit.
+If tool names collide, SAI enters an interactive resolution loop for **each** duplicate: show the current global definition and the imported definition, then let the operator **Overwrite**, **Skip**, or **Cancel** the entire import.  
+When stdin is not a TTY, duplicates raise a clear error instead of defaulting silently. No config writes occur until all conflicts are resolved successfully; a cancel leaves the global config untouched.
 
 ### Tool inventory helper
 
@@ -131,6 +133,7 @@ SAI constructs the final LLM context as:
 
 3. **User (scope hint) message** *(optional)*  
    Included when the operator supplies `-s/--scope`; provides glob/path hints such as `logs/**/*.json` or free-form descriptions ("only PDF documents").
+   - Special case: when scope is exactly `"."`, the scope message embeds a non-recursive listing of the current working directory. The helper `scope::build_scope_dot_listing` gathers names (directories get a trailing `/`), applies the `SCOPE_DOT_MAX_BYTES` cap, and appends `(truncated directory listing)` when shortened.
 
 4. **User (data sample) message** *(optional)*  
    Only added when using `--peek`.
@@ -318,5 +321,3 @@ All builds use Rust stable and upload artifacts for release.
 # 12. License
 
 MIT License.
-
-

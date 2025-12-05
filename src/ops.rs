@@ -1,9 +1,120 @@
-use crate::config::{load_global_config, load_prompt_config, PromptConfig};
+use crate::config::{load_global_config, load_prompt_config, PromptConfig, ToolConfig};
 use anyhow::{anyhow, Context, Result};
 use serde_yaml;
 use std::env;
 use std::fs;
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
+
+pub trait DuplicateResolverIo {
+    fn is_interactive(&self) -> bool;
+    fn write_str(&mut self, content: &str) -> Result<()>;
+    fn read_line(&mut self, buf: &mut String) -> Result<usize>;
+}
+
+struct StdioDuplicateResolverIo;
+
+impl DuplicateResolverIo for StdioDuplicateResolverIo {
+    fn is_interactive(&self) -> bool {
+        io::stdin().is_terminal()
+    }
+
+    fn write_str(&mut self, content: &str) -> Result<()> {
+        let mut stdout = io::stdout();
+        stdout
+            .write_all(content.as_bytes())
+            .context("Failed to write duplicate resolution prompt")?;
+        stdout.flush().ok();
+        Ok(())
+    }
+
+    fn read_line(&mut self, buf: &mut String) -> Result<usize> {
+        io::stdin()
+            .read_line(buf)
+            .context("Failed to read duplicate resolution choice")
+    }
+}
+
+#[derive(Debug)]
+pub enum MergeResult {
+    Applied(Vec<ToolConfig>),
+    Cancelled,
+}
+
+pub fn resolve_duplicate_tools(
+    existing: &[ToolConfig],
+    incoming: &[ToolConfig],
+    prompt_label: &str,
+    io: &mut dyn DuplicateResolverIo,
+) -> Result<MergeResult> {
+    let mut merged = existing.to_vec();
+
+    for tool in incoming {
+        if let Some(pos) = merged.iter().position(|t| t.name == tool.name) {
+            if !io.is_interactive() {
+                return Err(anyhow!(
+                    "Tool '{}' already exists in the global default prompt and interactive resolution is required. Re-run in a TTY to choose overwrite, skip, or cancel.",
+                    tool.name
+                ));
+            }
+
+            show_conflict(io, &merged[pos], tool, prompt_label)?;
+
+            loop {
+                io.write_str(
+                    &format!(
+                        "Conflict for tool '{}':\n\n[O] Overwrite global definition with imported definition\n[S] Skip imported definition (keep global)\n[C] Cancel entire import\n\nChoice [O/S/C]: ",
+                        tool.name
+                    ))?;
+
+                let mut buf = String::new();
+                let bytes = io.read_line(&mut buf)?;
+                if bytes == 0 {
+                    return Ok(MergeResult::Cancelled);
+                }
+                let trimmed = buf.trim().to_lowercase();
+                match trimmed.as_str() {
+                    "o" => {
+                        merged[pos] = tool.clone();
+                        break;
+                    }
+                    "s" => {
+                        break;
+                    }
+                    "c" => {
+                        return Ok(MergeResult::Cancelled);
+                    }
+                    _ => {
+                        io.write_str("Please enter O, S, or C.\n\n")?;
+                    }
+                }
+            }
+        } else {
+            merged.push(tool.clone());
+        }
+    }
+
+    Ok(MergeResult::Applied(merged))
+}
+
+fn show_conflict(
+    io: &mut dyn DuplicateResolverIo,
+    existing: &ToolConfig,
+    incoming: &ToolConfig,
+    prompt_label: &str,
+) -> Result<()> {
+    io.write_str(&format!(
+        "\n=== Tool conflict detected: '{}' ===\n",
+        existing.name
+    ))?;
+    io.write_str("Current global definition:\n")?;
+    io.write_str(&format!("name: {}\nconfig:\n{}\n\n", existing.name, existing.config))?;
+    io.write_str(&format!(
+        "Imported definition (from {}):\nname: {}\nconfig:\n{}\n\n",
+        prompt_label, incoming.name, incoming.config
+    ))?;
+    Ok(())
+}
 
 pub fn create_prompt_template(values: &[String]) -> Result<()> {
     if values.is_empty() {
@@ -75,24 +186,28 @@ pub fn add_prompt_to_global(global_path: &Path, prompt_path: &Path) -> Result<()
         .default_prompt
         .get_or_insert_with(PromptConfig::default);
 
-    for tool in &prompt_cfg.tools {
-        if default_prompt
-            .tools
-            .iter()
-            .any(|existing| existing.name == tool.name)
-        {
-            return Err(anyhow!(
-                "Tool '{}' already exists in the global default prompt",
-                tool.name
-            ));
+    let prompt_label = prompt_path.display().to_string();
+    let mut resolver = StdioDuplicateResolverIo;
+    let merge_result = resolve_duplicate_tools(
+        &default_prompt.tools,
+        &prompt_cfg.tools,
+        &prompt_label,
+        &mut resolver,
+    )?;
+
+    let merged_tools = match merge_result {
+        MergeResult::Applied(tools) => tools,
+        MergeResult::Cancelled => {
+            println!("Import cancelled; no changes applied.");
+            return Ok(());
         }
-    }
+    };
 
     if default_prompt.meta_prompt.is_none() {
         default_prompt.meta_prompt = prompt_cfg.meta_prompt.clone();
     }
 
-    default_prompt.tools.extend(prompt_cfg.tools.clone());
+    default_prompt.tools = merged_tools;
 
     if let Some(parent) = global_path.parent() {
         fs::create_dir_all(parent)
@@ -236,6 +351,7 @@ fn availability_status(tool: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::VecDeque;
     use tempfile::tempdir;
 
     #[test]
@@ -258,5 +374,127 @@ mod tests {
         ])
         .unwrap();
         assert!(template_path.exists());
+    }
+
+    #[test]
+    fn resolve_duplicate_overwrite_replaces_definition() {
+        let existing = vec![ToolConfig {
+            name: "echo".to_string(),
+            config: "old".to_string(),
+        }];
+        let incoming = vec![ToolConfig {
+            name: "echo".to_string(),
+            config: "new".to_string(),
+        }];
+
+        let mut io = MockIo::new(vec!["o\n"], true);
+        let result =
+            resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
+        match result {
+            MergeResult::Applied(tools) => {
+                assert_eq!(tools.len(), 1);
+                assert_eq!(tools[0].config, "new");
+            }
+            MergeResult::Cancelled => panic!("unexpected cancel"),
+        }
+        assert!(io.output.contains("Current global definition"));
+        assert!(io.output.contains("Imported definition"));
+    }
+
+    #[test]
+    fn resolve_duplicate_skip_keeps_existing() {
+        let existing = vec![ToolConfig {
+            name: "echo".to_string(),
+            config: "old".to_string(),
+        }];
+        let incoming = vec![ToolConfig {
+            name: "echo".to_string(),
+            config: "new".to_string(),
+        }];
+
+        let mut io = MockIo::new(vec!["s\n"], true);
+        let result =
+            resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
+        match result {
+            MergeResult::Applied(tools) => {
+                assert_eq!(tools[0].config, "old");
+            }
+            MergeResult::Cancelled => panic!("unexpected cancel"),
+        }
+    }
+
+    #[test]
+    fn resolve_duplicate_cancel_aborts() {
+        let existing = vec![ToolConfig {
+            name: "echo".to_string(),
+            config: "old".to_string(),
+        }];
+        let incoming = vec![ToolConfig {
+            name: "echo".to_string(),
+            config: "new".to_string(),
+        }];
+
+        let mut io = MockIo::new(vec!["c\n"], true);
+        let result =
+            resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
+        match result {
+            MergeResult::Applied(_) => panic!("expected cancel"),
+            MergeResult::Cancelled => {}
+        }
+    }
+
+    #[test]
+    fn non_interactive_duplicate_errors() {
+        let existing = vec![ToolConfig {
+            name: "echo".to_string(),
+            config: "old".to_string(),
+        }];
+        let incoming = vec![ToolConfig {
+            name: "echo".to_string(),
+            config: "new".to_string(),
+        }];
+
+        let mut io = MockIo::new(vec![], false);
+        let err = resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io)
+            .unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("interactive resolution is required"));
+    }
+
+    struct MockIo {
+        inputs: VecDeque<String>,
+        output: String,
+        interactive: bool,
+    }
+
+    impl MockIo {
+        fn new(inputs: Vec<&str>, interactive: bool) -> Self {
+            Self {
+                inputs: inputs.into_iter().map(|s| s.to_string()).collect(),
+                output: String::new(),
+                interactive,
+            }
+        }
+    }
+
+    impl DuplicateResolverIo for MockIo {
+        fn is_interactive(&self) -> bool {
+            self.interactive
+        }
+
+        fn write_str(&mut self, content: &str) -> Result<()> {
+            self.output.push_str(content);
+            Ok(())
+        }
+
+        fn read_line(&mut self, buf: &mut String) -> Result<usize> {
+            if let Some(next) = self.inputs.pop_front() {
+                buf.push_str(&next);
+                Ok(next.len())
+            } else {
+                Ok(0)
+            }
+        }
     }
 }
