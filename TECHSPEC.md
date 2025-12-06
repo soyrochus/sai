@@ -46,6 +46,7 @@ flowchart TD
 - `llm`: defines the `CommandGenerator` trait and its default `HttpCommandGenerator` implementation backed by `reqwest`.
 - `safety`: rejects disallowed tools or shell operators and returns the parsed token list.
 - `executor`: houses the `CommandExecutor` trait and the default `ShellCommandExecutor` that toggles between direct spawning and shell delegation when `--unsafe` is set.
+- `history`: implements NDJSON-based invocation logging with automatic rotation, plus latest-entry retrieval for the `--analyze` mode.
 - `ops`: shared helpers for `--init`, `--create-prompt`, `--add-prompt`, and `--list-tools`, including the duplicate-resolution helper used during prompt merges.
 - `scope`: utilities for building scope-aware context (currently the `"."` directory listing helper).
 
@@ -284,14 +285,95 @@ This split keeps the "no shell by default" invariant while still enabling power 
 
 ---
 
-# 9. Testing Strategy
+# 9. History and Analysis System
 
-- Module-level unit tests cover prompt building, peek truncation, configuration merging, operator detection, and executor behaviour. Each test invokes the respective module in isolation without hitting the network.
+## 9.1 History Log Format
+
+SAI maintains an append-only history log using newline-delimited JSON (NDJSON). Each SAI invocation writes exactly one entry containing:
+
+```rust
+pub struct HistoryEntry {
+    pub ts: String,              // ISO 8601 UTC timestamp
+    pub cwd: String,             // current working directory
+    pub argv: Vec<String>,       // full CLI argv as seen by SAI
+    pub exit_code: i32,          // process exit code
+    pub generated_command: Option<String>, // final shell command, if any
+    pub unsafe_mode: bool,       // whether --unsafe was used
+    pub confirm: bool,           // whether confirmation was requested
+    pub explain: bool,           // whether --explain was used
+    pub scope: Option<String>,   // raw scope value, if any
+    pub peek_files: Vec<String>, // list of peek paths, if any
+    pub notes: Option<String>,   // optional free-form note (e.g. error summary)
+}
+```
+
+## 9.2 Log Location and Rotation
+
+The history log resides in the standard config directory:
+
+- **Linux:** `~/.config/sai/history.log`
+- **macOS:** `~/Library/Application Support/sai/history.log`
+- **Windows:** `%APPDATA%\sai\history.log`
+
+The log automatically rotates when it exceeds `HISTORY_MAX_BYTES` (1 MB):
+
+- Current log is renamed to `history.log.1`
+- New entries start a fresh `history.log`
+- Only one backup generation is kept
+
+## 9.3 Explain Mode (`--explain`)
+
+When `--explain` is provided:
+
+1. **Command generation** proceeds normally through the standard pipeline
+2. **Explanation request** is sent to the LLM with a specialized system prompt:
+   - Role: "shell and tool usage explainer"
+   - Task: explain what the generated command will do, describing each flag and the overall effect
+   - Temperature: 0.0 for consistency
+3. **Display** shows both the command and its explanation
+4. **Confirmation** is forced (implies `--confirm`) before execution
+5. **History entry** records `explain: true`
+
+The explanation helps users understand complex commands before executing them, particularly useful when learning new tools or validating LLM output.
+
+## 9.4 Analyze Mode (`--analyze`)
+
+The `--analyze` flag provides post-hoc analysis of the most recent SAI invocation:
+
+1. **Mutually exclusive** with all normal SAI parameters (enforced via clap conflicts)
+2. **Reads latest entry** from the history log using `history::read_latest_entry()`
+3. **Builds analysis prompt** with:
+   - System role: "debugging assistant for the SAI CLI"
+   - User content: serialized `HistoryEntry` as JSON
+   - Task: explain what likely happened, why, and suggest next steps
+4. **LLM call** generates the analysis (no command generation occurs)
+5. **Never executes commands** — purely informational
+6. **Error handling**:
+   - No history available → friendly message, exit code 2
+   - LLM failure → error message, non-zero exit
+
+This mode is particularly valuable for:
+
+- Understanding unexpected failures
+- Learning from successful commands
+- Getting context-aware suggestions after errors
+
+Both `--explain` and `--analyze` leverage the same LLM backend but serve different purposes in the workflow: explain prevents problems by clarifying intent before execution, while analyze diagnoses problems after they occur.
+
+---
+
+# 10. Testing Strategy
+
+- Module-level unit tests cover prompt building, peek truncation, configuration merging, operator detection, executor behaviour, history logging, and rotation. Each test invokes the respective module in isolation without hitting the network.
 - The `app::run_with_dependencies` helper allows integration-style tests to inject mock implementations of `CommandGenerator` or `CommandExecutor` when richer scenarios are needed.
 - `tempfile`-backed fixtures keep filesystem manipulations isolated to throwaway directories.
+- History module tests verify:
+  - Round-trip serialization of `HistoryEntry`
+  - Rotation triggers when size threshold exceeded
+  - Latest entry retrieval handles empty/malformed logs gracefully
 - Execute `cargo test` to run the suite; no external services are contacted.
 
-# 10. Error Handling
+# 11. Error Handling
 
 Typical error conditions:
 
@@ -301,12 +383,14 @@ Typical error conditions:
 * Forbidden operator
 * LLM returned empty or unparsable output
 * Missing or unreadable peek file
+* No history available for `--analyze`
+* History log read/write failures
 
 All errors include clear diagnostic messages.
 
 ---
 
-# 11. Build and Release
+# 12. Build and Release
 
 SAI provides a GitHub Actions workflow building:
 
@@ -318,6 +402,6 @@ All builds use Rust stable and upload artifacts for release.
 
 ---
 
-# 12. License
+# 13. License
 
 MIT License.

@@ -15,6 +15,16 @@ pub trait CommandGenerator {
     ) -> Result<String>;
 }
 
+pub trait ChatClient {
+    fn respond(
+        &self,
+        ai: &EffectiveAiConfig,
+        system_prompt: &str,
+        user_prompt: &str,
+        temperature: f32,
+    ) -> Result<String>;
+}
+
 pub struct HttpCommandGenerator {
     client: Client,
 }
@@ -85,64 +95,31 @@ impl CommandGenerator for HttpCommandGenerator {
             });
         }
 
-        match ai {
-            EffectiveAiConfig::OpenAI {
-                api_key,
-                base_url,
-                model,
-            } => {
-                let req = ChatRequest {
-                    model: Some(model.clone()),
-                    messages,
-                    temperature: 0.0,
-                };
-                let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
-                let resp: ChatResponse = self
-                    .client
-                    .post(&url)
-                    .bearer_auth(api_key)
-                    .json(&req)
-                    .send()
-                    .context("HTTP error calling OpenAI")?
-                    .error_for_status()
-                    .context("Non-success status from OpenAI")?
-                    .json()
-                    .context("Failed to parse OpenAI response JSON")?;
+        let content = self.chat(ai, messages, 0.0)?;
+        extract_first_line_from_text(&content)
+    }
+}
 
-                extract_first_line(&resp)
-            }
-            EffectiveAiConfig::Azure {
-                api_key,
-                endpoint,
-                deployment,
-                api_version,
-            } => {
-                let req = ChatRequest {
-                    model: None,
-                    messages,
-                    temperature: 0.0,
-                };
-                let url = format!(
-                    "{}/openai/deployments/{}/chat/completions?api-version={}",
-                    endpoint.trim_end_matches('/'),
-                    deployment,
-                    api_version
-                );
-                let resp: ChatResponse = self
-                    .client
-                    .post(&url)
-                    .header("api-key", api_key)
-                    .json(&req)
-                    .send()
-                    .context("HTTP error calling Azure OpenAI")?
-                    .error_for_status()
-                    .context("Non-success status from Azure OpenAI")?
-                    .json()
-                    .context("Failed to parse Azure OpenAI response JSON")?;
+impl ChatClient for HttpCommandGenerator {
+    fn respond(
+        &self,
+        ai: &EffectiveAiConfig,
+        system_prompt: &str,
+        user_prompt: &str,
+        temperature: f32,
+    ) -> Result<String> {
+        let messages = vec![
+            Message {
+                role: "system".to_string(),
+                content: system_prompt.to_string(),
+            },
+            Message {
+                role: "user".to_string(),
+                content: user_prompt.to_string(),
+            },
+        ];
 
-                extract_first_line(&resp)
-            }
-        }
+        self.chat(ai, messages, temperature)
     }
 }
 
@@ -174,7 +151,71 @@ struct ResponseMessage {
     content: String,
 }
 
-fn extract_first_line(resp: &ChatResponse) -> Result<String> {
+impl HttpCommandGenerator {
+    fn chat(
+        &self,
+        ai: &EffectiveAiConfig,
+        messages: Vec<Message>,
+        temperature: f32,
+    ) -> Result<String> {
+        let resp = match ai {
+            EffectiveAiConfig::OpenAI {
+                api_key,
+                base_url,
+                model,
+            } => {
+                let req = ChatRequest {
+                    model: Some(model.clone()),
+                    messages,
+                    temperature,
+                };
+                let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+                self.client
+                    .post(&url)
+                    .bearer_auth(api_key)
+                    .json(&req)
+                    .send()
+                    .context("HTTP error calling OpenAI")?
+                    .error_for_status()
+                    .context("Non-success status from OpenAI")?
+                    .json()
+                    .context("Failed to parse OpenAI response JSON")?
+            }
+            EffectiveAiConfig::Azure {
+                api_key,
+                endpoint,
+                deployment,
+                api_version,
+            } => {
+                let req = ChatRequest {
+                    model: None,
+                    messages,
+                    temperature,
+                };
+                let url = format!(
+                    "{}/openai/deployments/{}/chat/completions?api-version={}",
+                    endpoint.trim_end_matches('/'),
+                    deployment,
+                    api_version
+                );
+                self.client
+                    .post(&url)
+                    .header("api-key", api_key)
+                    .json(&req)
+                    .send()
+                    .context("HTTP error calling Azure OpenAI")?
+                    .error_for_status()
+                    .context("Non-success status from Azure OpenAI")?
+                    .json()
+                    .context("Failed to parse Azure OpenAI response JSON")?
+            }
+        };
+
+        extract_content(&resp)
+    }
+}
+
+fn extract_content(resp: &ChatResponse) -> Result<String> {
     let content = resp
         .choices
         .get(0)
@@ -184,20 +225,10 @@ fn extract_first_line(resp: &ChatResponse) -> Result<String> {
         .trim()
         .to_string();
 
-    let mut text = content.clone();
-    if text.starts_with("```") {
-        let mut cleaned = String::new();
-        for line in text.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("```") {
-                continue;
-            }
-            cleaned.push_str(line);
-            cleaned.push('\n');
-        }
-        text = cleaned.trim().to_string();
-    }
+    Ok(strip_code_fences(&content))
+}
 
+fn extract_first_line_from_text(text: &str) -> Result<String> {
     let first_line = text
         .lines()
         .next()
@@ -206,8 +237,25 @@ fn extract_first_line(resp: &ChatResponse) -> Result<String> {
         .to_string();
 
     if first_line.is_empty() {
-        Err(anyhow!("LLM returned an empty command line"))
-    } else {
-        Ok(first_line)
+        return Err(anyhow!("LLM returned an empty command line"));
     }
+
+    Ok(first_line)
+}
+
+fn strip_code_fences(text: &str) -> String {
+    if !text.trim_start().starts_with("```") {
+        return text.trim().to_string();
+    }
+
+    let mut cleaned = String::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("```") {
+            continue;
+        }
+        cleaned.push_str(line);
+        cleaned.push('\n');
+    }
+    cleaned.trim().to_string()
 }

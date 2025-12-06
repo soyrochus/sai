@@ -22,9 +22,32 @@ pub struct Cli {
     #[arg(long = "list-tools")]
     pub list_tools: bool,
 
+    /// Analyze the latest SAI invocation and explain what happened
+    #[arg(
+        long,
+        conflicts_with_all = [
+            "init",
+            "create_prompt",
+            "add_prompt",
+            "list_tools",
+            "confirm",
+            "unsafe_mode",
+            "peek",
+            "scope",
+            "arg1",
+            "prompt",
+            "explain"
+        ]
+    )]
+    pub analyze: bool,
+
     /// Ask for confirmation before executing the generated command
     #[arg(short, long)]
     pub confirm: bool,
+
+    /// Explain the generated command and always ask for confirmation
+    #[arg(short = 'e', long, conflicts_with = "analyze")]
+    pub explain: bool,
 
     /// Disable operator-level safety checks (pipes, redirects, etc.).
     /// This always forces an interactive confirmation before running.
@@ -41,7 +64,7 @@ pub struct Cli {
     pub scope: Option<String>,
 
     /// Either a per-call prompt config YAML file, or the natural language prompt (simple mode)
-    #[arg(required_unless_present_any = ["init", "create_prompt", "add_prompt", "list_tools"])]
+    #[arg(required_unless_present_any = ["init", "create_prompt", "add_prompt", "list_tools", "analyze"])]
     pub arg1: Option<String>,
 
     /// Natural language prompt (advanced mode, when arg1 is a config file)

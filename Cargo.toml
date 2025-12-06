@@ -31,6 +31,9 @@ shell-words = "1.1.0"
 # Glob pattern matching for safe wildcard expansion
 glob = "0.3"
 
+# Timestamp handling for history log entries
+chrono = { version = "0.4", features = ["clock"] }
+
 # Optional but strongly recommended for robust UTF-8 conversions
 # (the code already uses String::from_utf8_lossy)
 # no extra crate needed; std is enough

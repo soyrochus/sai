@@ -108,7 +108,10 @@ fn show_conflict(
         existing.name
     ))?;
     io.write_str("Current global definition:\n")?;
-    io.write_str(&format!("name: {}\nconfig:\n{}\n\n", existing.name, existing.config))?;
+    io.write_str(&format!(
+        "name: {}\nconfig:\n{}\n\n",
+        existing.name, existing.config
+    ))?;
     io.write_str(&format!(
         "Imported definition (from {}):\nname: {}\nconfig:\n{}\n\n",
         prompt_label, incoming.name, incoming.config
@@ -388,8 +391,7 @@ mod tests {
         }];
 
         let mut io = MockIo::new(vec!["o\n"], true);
-        let result =
-            resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
+        let result = resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
         match result {
             MergeResult::Applied(tools) => {
                 assert_eq!(tools.len(), 1);
@@ -413,8 +415,7 @@ mod tests {
         }];
 
         let mut io = MockIo::new(vec!["s\n"], true);
-        let result =
-            resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
+        let result = resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
         match result {
             MergeResult::Applied(tools) => {
                 assert_eq!(tools[0].config, "old");
@@ -435,8 +436,7 @@ mod tests {
         }];
 
         let mut io = MockIo::new(vec!["c\n"], true);
-        let result =
-            resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
+        let result = resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
         match result {
             MergeResult::Applied(_) => panic!("expected cancel"),
             MergeResult::Cancelled => {}
@@ -455,8 +455,8 @@ mod tests {
         }];
 
         let mut io = MockIo::new(vec![], false);
-        let err = resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io)
-            .unwrap_err();
+        let err =
+            resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap_err();
         assert!(err
             .to_string()
             .contains("interactive resolution is required"));

@@ -192,6 +192,79 @@ Confirmation shows:
 - generated command
 - Y/N choice
 
+### **Explain mode**
+
+Get a detailed explanation of what the generated command will do before executing:
+
+```bash
+sai -e "Find all Python files modified today"
+```
+
+This mode:
+
+- Generates the command as usual
+- Asks the LLM to explain what the command does in plain language
+- Shows the explanation before confirmation
+- **Always requires confirmation** (implies `-c`)
+- Can be combined with other flags like `--scope`, `--peek`, `--unsafe`
+
+Example output:
+
+```text
+Generated command:
+  find . -name '*.py' -mtime 0
+
+Explanation:
+  This command searches for Python files (*.py) in the current directory
+  and subdirectories that were modified within the last 24 hours.
+  - find . : Start search from current directory
+  - -name '*.py' : Match files ending in .py
+  - -mtime 0 : Modified less than 24 hours ago
+
+Execute this command? [y/N]
+```
+
+### **Analyze mode**
+
+Analyze the most recent SAI invocation to understand what happened:
+
+```bash
+sai --analyze
+```
+
+This mode:
+
+- Reads the last entry from SAI's history log
+- Asks the LLM to explain what likely happened and why
+- Suggests what to try next
+- **Never executes any commands**
+- Cannot be combined with other SAI parameters
+
+Useful for:
+
+- Understanding why a command failed
+- Getting suggestions after an error
+- Learning what a previous command did
+
+Example:
+
+```bash
+$ sai "count lines in all rust files"
+# ... command fails ...
+
+$ sai --analyze
+Analyzing last SAI invocation...
+
+The command attempted to run 'wc -l *.rs' but failed because the shell
+glob pattern wasn't expanded. The generated command needed either:
+1. An explicit scope like -s . to help the LLM understand available files
+2. Or a more specific prompt mentioning the directory structure
+
+Suggested next steps:
+- Try: sai -s . "count lines in all rust files in src/"
+- Or: sai "count lines in src/*.rs"
+```
+
 ### Create a prompt template
 
 Generate a per-command prompt config with placeholders:
@@ -249,11 +322,43 @@ The repo ships with ready-to-adapt prompt configs under `prompts/`:
 
 ---
 
+## History and Analysis
+
+SAI automatically maintains a history log of all invocations in NDJSON format (newline-delimited JSON). Each command execution is recorded with metadata including:
+
+- Timestamp and working directory
+- Full command-line arguments
+- Generated shell command
+- Exit code and execution flags
+- Optional notes about errors or special conditions
+
+### **History log location**
+
+| OS      | Path                                              |
+| ------- | ------------------------------------------------- |
+| Linux   | `~/.config/sai/history.log`                       |
+| macOS   | `~/Library/Application Support/sai/history.log`   |
+| Windows | `%APPDATA%\sai\history.log`                       |
+
+The log automatically rotates when it exceeds 1 MB, keeping one backup generation.
+
+### **Analyzing command history**
+
+Use `--analyze` to review and understand your most recent SAI invocation:
+
+```bash
+sai --analyze
+```
+
+This is particularly useful after errors or unexpected results, as the LLM can explain what likely went wrong and suggest corrections.
+
+---
+
 ## Architecture Overview
 
 - `src/main.rs`: minimal bootstrap that calls into the real application logic.
 - `src/app.rs`: orchestrates CLI parsing, configuration loading, LLM invocation, confirmation, and command execution. Exposes `run_with_dependencies` for dependency injection during tests.
-- Supporting modules isolate responsibilities: `cli` (clap parser), `config` (YAML + env resolution), `prompt` (system prompt builder), `peek` (sample ingestion), `llm` (CommandGenerator trait + HTTP backend), `safety` (operator checks), `executor` (CommandExecutor trait + shell bridge), and `ops` (init/create/add/list helpers).
+- Supporting modules isolate responsibilities: `cli` (clap parser), `config` (YAML + env resolution), `prompt` (system prompt builder), `peek` (sample ingestion), `llm` (CommandGenerator trait + HTTP backend), `safety` (operator checks), `executor` (CommandExecutor trait + shell bridge), `history` (NDJSON logging and analysis), `scope` (directory context), and `ops` (init/create/add/list helpers).
 - The trait boundaries (`CommandGenerator`, `CommandExecutor`) allow swapping in mocks or alternative implementations (e.g., offline generators or dry-run executors) without touching the application core.
 
 ## Development
