@@ -53,9 +53,14 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::Write;
+    use std::sync::Mutex;
     use tempfile::tempdir;
 
+    // Global mutex to ensure only one test changes current directory at a time
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
     fn with_temp_cwd<F: FnOnce() -> R, R>(dir: &tempfile::TempDir, f: F) -> R {
+        let _guard = TEST_MUTEX.lock().unwrap();
         let original = env::current_dir().unwrap();
         env::set_current_dir(dir.path()).unwrap();
         let result = f();
@@ -66,7 +71,9 @@ mod tests {
     #[test]
     fn empty_directory_produces_empty_listing() {
         let dir = tempdir().unwrap();
-        let listing = with_temp_cwd(&dir, || build_scope_dot_listing().unwrap());
+        let listing = with_temp_cwd(&dir, || {
+            build_scope_dot_listing().unwrap()
+        });
         assert_eq!(listing, "");
     }
 
@@ -77,7 +84,9 @@ mod tests {
         File::create(file_path).unwrap();
         let subdir = dir.path().join("subdir");
         fs::create_dir(&subdir).unwrap();
-        let listing = with_temp_cwd(&dir, || build_scope_dot_listing().unwrap());
+        let listing = with_temp_cwd(&dir, || {
+            build_scope_dot_listing().unwrap()
+        });
         assert!(listing.contains("file.txt"));
         assert!(listing.contains("subdir/"));
     }
@@ -87,12 +96,14 @@ mod tests {
         let dir = tempdir().unwrap();
         for i in 0..500 {
             let name = format!("long_file_name_{}_{}", i, "x".repeat(20));
-            let path = dir.path().join(name);
-            let mut file = File::create(path).unwrap();
+            let path = dir.path().join(&name);
+            let mut file = File::create(&path).unwrap();
             writeln!(file, "data").unwrap();
         }
 
-        let listing = with_temp_cwd(&dir, || build_scope_dot_listing().unwrap());
+        let listing = with_temp_cwd(&dir, || {
+            build_scope_dot_listing().unwrap()
+        });
         assert!(listing.contains(TRUNCATION_NOTE));
         assert!(listing.len() <= SCOPE_DOT_MAX_BYTES);
     }

@@ -1,8 +1,37 @@
+# Releases/Changelog
+
+## Relasev0.11.0 – Analysis Features and Interactive UX Improvements
+
+Enhanced debugging capabilities with command history analysis and improved interactive prompts.
+
+New Features:
+
+Command history logging: Automatic NDJSON-based logging of all SAI invocations with rotation at 1MB
+`--analyze` mode: AI-powered analysis of the most recent command to explain what happened and suggest fixes
+`--explain` mode: Get detailed explanation of what a generated command will do before executing it
+Single-key prompts: Interactive conflict resolution now accepts single keypress (O/S/C) without requiring Enter
+
+What's Changed:
+
+- New `src/history.rs` module implementing append-only NDJSON history log with automatic rotation
+- `--analyze` flag reads latest history entry and asks LLM to diagnose what happened and why
+- `--explain` flag generates command explanation before execution, always requires confirmation
+- Interactive tool conflict resolution now uses `crossterm` for instant single-character input
+- Added confirmation messages: "✓ Overwritten tool 'xyz'" and "✓ Skipped tool 'xyz' (kept existing)"
+- Updated README.md and TECHSPEC.md with complete documentation of new features
+
+Bug Fixes:
+
+- Fixed confusing UX in tool conflict resolution where user input appeared to be ignored when skipping duplicate tools - now provides immediate visual feedback with single-key input and confirmation messages
+- Fixed test race conditions in scope tests by adding mutex synchronization for directory changes
+
+Tell the shell what you want, not how to do it.
+
+See README.md for installation and TECHSPEC.md for technical details.
 
 ---
 
-Latest release (v0.10.0)
-SAI v0.10.0 – Enhanced Command Execution and Tool Management
+## Release v0.10.0 – Enhanced Command Execution and Tool Management
 
 Improved glob pattern handling, directory awareness, and interactive tool configuration management.
 
@@ -29,8 +58,9 @@ See README.md for installation and TECHSPEC.md for technical details.
 
 ---
 
-First release (v0.9.0) Pre-release
-SAI v0.9.0 – Natural Language Shell Commands with Safety Guarantees
+## First release (v0.9.0) Pre-release
+
+### SAI v0.9.0 – Natural Language Shell Commands with Safety Guarantees
 
 Transform natural language into safe, executable shell commands using LLM intelligence with strict guardrails.
 

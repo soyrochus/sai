@@ -1,5 +1,9 @@
 use crate::config::{load_global_config, load_prompt_config, PromptConfig, ToolConfig};
 use anyhow::{anyhow, Context, Result};
+use crossterm::{
+    event::{self, Event, KeyCode, KeyEvent},
+    terminal::{disable_raw_mode, enable_raw_mode},
+};
 use serde_yaml;
 use std::env;
 use std::fs;
@@ -9,7 +13,7 @@ use std::path::{Path, PathBuf};
 pub trait DuplicateResolverIo {
     fn is_interactive(&self) -> bool;
     fn write_str(&mut self, content: &str) -> Result<()>;
-    fn read_line(&mut self, buf: &mut String) -> Result<usize>;
+    fn read_char(&mut self) -> Result<char>;
 }
 
 struct StdioDuplicateResolverIo;
@@ -28,10 +32,19 @@ impl DuplicateResolverIo for StdioDuplicateResolverIo {
         Ok(())
     }
 
-    fn read_line(&mut self, buf: &mut String) -> Result<usize> {
-        io::stdin()
-            .read_line(buf)
-            .context("Failed to read duplicate resolution choice")
+    fn read_char(&mut self) -> Result<char> {
+        enable_raw_mode().context("Failed to enable raw terminal mode")?;
+        let result = loop {
+            if let Event::Key(KeyEvent { code, .. }) = event::read()
+                .context("Failed to read key event")?
+            {
+                if let KeyCode::Char(c) = code {
+                    break Ok(c);
+                }
+            }
+        };
+        disable_raw_mode().context("Failed to disable raw terminal mode")?;
+        result
     }
 }
 
@@ -63,29 +76,31 @@ pub fn resolve_duplicate_tools(
             loop {
                 io.write_str(
                     &format!(
-                        "Conflict for tool '{}':\n\n[O] Overwrite global definition with imported definition\n[S] Skip imported definition (keep global)\n[C] Cancel entire import\n\nChoice [O/S/C]: ",
+                        "Conflict for tool '{}':\n\n[O] Overwrite global definition with imported definition\n[S] Skip imported definition (keep global)\n[C] Cancel entire import\n\nChoice (just press key, no Enter needed) [O/S/C]: ",
                         tool.name
                     ))?;
 
-                let mut buf = String::new();
-                let bytes = io.read_line(&mut buf)?;
-                if bytes == 0 {
-                    return Ok(MergeResult::Cancelled);
-                }
-                let trimmed = buf.trim().to_lowercase();
-                match trimmed.as_str() {
-                    "o" => {
+                let c = io.read_char()?.to_ascii_lowercase();
+                
+                // Echo the character and newline for visual feedback
+                io.write_str(&format!("{}\n", c))?;
+                
+                match c {
+                    'o' => {
                         merged[pos] = tool.clone();
+                        io.write_str(&format!("✓ Overwritten tool '{}'\n\n", tool.name))?;
                         break;
                     }
-                    "s" => {
+                    's' => {
+                        io.write_str(&format!("✓ Skipped tool '{}' (kept existing)\n\n", tool.name))?;
                         break;
                     }
-                    "c" => {
+                    'c' => {
+                        io.write_str("\nCancelled.\n")?;
                         return Ok(MergeResult::Cancelled);
                     }
                     _ => {
-                        io.write_str("Please enter O, S, or C.\n\n")?;
+                        io.write_str("Please press O, S, or C.\n\n")?;
                     }
                 }
             }
@@ -390,7 +405,7 @@ mod tests {
             config: "new".to_string(),
         }];
 
-        let mut io = MockIo::new(vec!["o\n"], true);
+        let mut io = MockIo::new(vec!['o'], true);
         let result = resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
         match result {
             MergeResult::Applied(tools) => {
@@ -401,6 +416,7 @@ mod tests {
         }
         assert!(io.output.contains("Current global definition"));
         assert!(io.output.contains("Imported definition"));
+        assert!(io.output.contains("✓ Overwritten tool 'echo'"));
     }
 
     #[test]
@@ -414,7 +430,7 @@ mod tests {
             config: "new".to_string(),
         }];
 
-        let mut io = MockIo::new(vec!["s\n"], true);
+        let mut io = MockIo::new(vec!['s'], true);
         let result = resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
         match result {
             MergeResult::Applied(tools) => {
@@ -422,6 +438,7 @@ mod tests {
             }
             MergeResult::Cancelled => panic!("unexpected cancel"),
         }
+        assert!(io.output.contains("✓ Skipped tool 'echo' (kept existing)"));
     }
 
     #[test]
@@ -435,7 +452,7 @@ mod tests {
             config: "new".to_string(),
         }];
 
-        let mut io = MockIo::new(vec!["c\n"], true);
+        let mut io = MockIo::new(vec!['c'], true);
         let result = resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
         match result {
             MergeResult::Applied(_) => panic!("expected cancel"),
@@ -463,15 +480,15 @@ mod tests {
     }
 
     struct MockIo {
-        inputs: VecDeque<String>,
+        inputs: VecDeque<char>,
         output: String,
         interactive: bool,
     }
 
     impl MockIo {
-        fn new(inputs: Vec<&str>, interactive: bool) -> Self {
+        fn new(inputs: Vec<char>, interactive: bool) -> Self {
             Self {
-                inputs: inputs.into_iter().map(|s| s.to_string()).collect(),
+                inputs: inputs.into_iter().collect(),
                 output: String::new(),
                 interactive,
             }
@@ -488,13 +505,10 @@ mod tests {
             Ok(())
         }
 
-        fn read_line(&mut self, buf: &mut String) -> Result<usize> {
-            if let Some(next) = self.inputs.pop_front() {
-                buf.push_str(&next);
-                Ok(next.len())
-            } else {
-                Ok(0)
-            }
+        fn read_char(&mut self) -> Result<char> {
+            self.inputs
+                .pop_front()
+                .ok_or_else(|| anyhow!("No more input available"))
         }
     }
 }

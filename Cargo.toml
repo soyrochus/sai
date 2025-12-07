@@ -1,6 +1,6 @@
 [package]
 name = "sai"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2021"
 authors = ["Iwan van der Kleijn <iwanvanderkleijn@gmail.com>"]
 license = "MIT"
@@ -33,6 +33,9 @@ glob = "0.3"
 
 # Timestamp handling for history log entries
 chrono = { version = "0.4", features = ["clock"] }
+
+# Cross-platform terminal manipulation for interactive prompts
+crossterm = "0.27"
 
 # Optional but strongly recommended for robust UTF-8 conversions
 # (the code already uses String::from_utf8_lossy)
