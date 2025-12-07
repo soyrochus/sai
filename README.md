@@ -115,8 +115,9 @@ You can bootstrap sensible defaults by running:
 sai --init
 ```
 
-This writes a starter config with placeholder API credentials and no tools. Add tooling later with
-`sai --add-prompt ...` or your own YAML edits.
+This writes a starter config with placeholder API credentials and a curated set of standard Unix
+tools (grep, find, awk, sed, sort, wc, etc.) pre-configured. You can immediately start using SAI
+after updating your API key, or add more tools later with `sai --add-prompt ...` or your own YAML edits.
 
 ### Example `config.yaml`
 

@@ -3,6 +3,7 @@ use crate::config::{
     find_global_config_path, load_global_config, load_prompt_config, resolve_ai_config,
 };
 use crate::executor::{CommandExecutor, ShellCommandExecutor};
+use crate::help;
 use crate::history::{self, HistoryEntry};
 use crate::llm::{ChatClient, CommandGenerator, HttpCommandGenerator};
 use crate::ops;
@@ -56,6 +57,20 @@ impl RunSummary {
 }
 
 pub fn run() -> Result<()> {
+    let raw_args: Vec<String> = env::args().collect();
+    if let Some(help) = help::try_handle_help(&raw_args[1..]) {
+        match help {
+            Ok(text) => {
+                println!("{}", text);
+                std::process::exit(0);
+            }
+            Err(err) => {
+                eprintln!("{}", err);
+                std::process::exit(1);
+            }
+        }
+    }
+
     let cli = Cli::parse();
     let generator = HttpCommandGenerator::new();
     let executor = ShellCommandExecutor;

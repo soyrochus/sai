@@ -1,10 +1,16 @@
+use crate::help;
 use clap::Parser;
 
 /// Command-line interface definition for sai.
 #[derive(Parser, Debug, Clone)]
-#[command(name = "sai")]
-#[command(version)]
-#[command(about = "Sai-cli ('sai'), an AI-powered command executor\nTell the shell what you want, not how to do it", long_about = None)]
+#[command(
+    name = "sai",
+    version,
+    about = help::CLI_ABOUT,
+    long_about = help::CLI_LONG_ABOUT,
+    override_usage = help::CLI_USAGE,
+    after_help = help::CLI_AFTER_HELP
+)]
 pub struct Cli {
     /// Initialize the default config file with placeholder values
     #[arg(long)]
