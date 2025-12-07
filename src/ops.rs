@@ -4,7 +4,6 @@ use crossterm::{
     event::{self, Event, KeyCode, KeyEvent},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
-use serde_yaml;
 use std::env;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
@@ -35,12 +34,12 @@ impl DuplicateResolverIo for StdioDuplicateResolverIo {
     fn read_char(&mut self) -> Result<char> {
         enable_raw_mode().context("Failed to enable raw terminal mode")?;
         let result = loop {
-            if let Event::Key(KeyEvent { code, .. }) =
-                event::read().context("Failed to read key event")?
+            if let Event::Key(KeyEvent {
+                code: KeyCode::Char(c),
+                ..
+            }) = event::read().context("Failed to read key event")?
             {
-                if let KeyCode::Char(c) = code {
-                    break Ok(c);
-                }
+                break Ok(c);
             }
         };
         disable_raw_mode().context("Failed to disable raw terminal mode")?;

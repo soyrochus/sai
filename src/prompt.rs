@@ -8,10 +8,7 @@ pub fn build_system_prompt(prompt_cfg: &PromptConfig) -> Result<(String, Vec<Str
         ));
     }
 
-    let meta_prompt = prompt_cfg
-        .meta_prompt
-        .clone()
-        .unwrap_or_else(|| "".to_string());
+    let meta_prompt = prompt_cfg.meta_prompt.clone().unwrap_or_default();
 
     let mut allowed_names = Vec::new();
     let mut tool_texts = Vec::new();

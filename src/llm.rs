@@ -218,7 +218,7 @@ impl HttpCommandGenerator {
 fn extract_content(resp: &ChatResponse) -> Result<String> {
     let content = resp
         .choices
-        .get(0)
+        .first()
         .ok_or_else(|| anyhow!("No choices in LLM response"))?
         .message
         .content

@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Context, Result};
-use shell_words;
 
 pub fn validate_and_split_command(
     cmd_line: &str,

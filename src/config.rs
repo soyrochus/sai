@@ -74,7 +74,7 @@ pub enum EffectiveAiConfig {
 }
 
 thread_local! {
-    static CONFIG_ROOT_OVERRIDE: RefCell<Option<PathBuf>> = RefCell::new(None);
+    static CONFIG_ROOT_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
 
 pub fn config_root_dir() -> PathBuf {
@@ -151,16 +151,14 @@ pub fn resolve_ai_config(global_ai: Option<AiConfig>) -> Result<EffectiveAiConfi
 
     let provider = if let Some(p) = provider {
         p.to_lowercase()
+    } else if openai_api_key.is_some() {
+        "openai".to_string()
+    } else if azure_api_key.is_some() {
+        "azure".to_string()
     } else {
-        if openai_api_key.is_some() {
-            "openai".to_string()
-        } else if azure_api_key.is_some() {
-            "azure".to_string()
-        } else {
-            return Err(anyhow!(
-                "No AI configuration found: set OpenAI or Azure info in config or environment"
-            ));
-        }
+        return Err(anyhow!(
+            "No AI configuration found: set OpenAI or Azure info in config or environment"
+        ));
     };
 
     match provider.as_str() {
