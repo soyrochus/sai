@@ -1,6 +1,22 @@
 # Releases/Changelog
 
-## Relasev0.11.0 – Analysis Features and Interactive UX Improvements
+## Relase v0.12.0 Package Rename & Deterministic Tests
+
+Highlights:
+
+- Crate renamed to `sai-cli` and published on crates.io; install directly with `cargo install sai-cli` to obtain the `sai` binary on any platform.
+- README updated with crates.io install instructions alongside the existing release binaries.
+
+Bug Fixes:
+
+- Eliminated nondeterministic test failures by giving tests their own isolated config/history directories instead of mutating global env vars. This removes the race conditions that triggered sporadic failures in `history` and `app` suites.
+- Added deterministic handling across history logging and explain/confirm paths, ensuring confirmation-related tests no longer depend on runtime ordering or shared state.
+
+Tell the shell what you want, not how to do it.
+
+---
+
+## Relase v0.11.0 – Analysis Features and Interactive UX Improvements
 
 Enhanced debugging capabilities with command history analysis and improved interactive prompts.
 
