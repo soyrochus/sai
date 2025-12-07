@@ -1224,8 +1224,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 
 [[package]]
-name = "sai"
-version = "0.11.0"
+name = "sai-cli"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "chrono",

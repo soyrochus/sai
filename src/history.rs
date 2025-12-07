@@ -143,7 +143,13 @@ pub fn now_iso_ts() -> String {
 mod tests {
     use super::*;
     use std::env;
+    use std::sync::{Mutex, OnceLock};
     use tempfile::TempDir;
+
+    fn env_guard() -> &'static Mutex<()> {
+        static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
+        GUARD.get_or_init(|| Mutex::new(()))
+    }
 
     fn set_config_home(temp: &TempDir) -> Option<String> {
         let prev = env::var("XDG_CONFIG_HOME").ok();
@@ -161,6 +167,7 @@ mod tests {
 
     #[test]
     fn write_and_read_round_trip() {
+        let _lock = env_guard().lock().unwrap();
         let temp = TempDir::new().unwrap();
         let prev = set_config_home(&temp);
 
@@ -189,6 +196,7 @@ mod tests {
 
     #[test]
     fn rotates_when_size_exceeded() {
+        let _lock = env_guard().lock().unwrap();
         let temp = TempDir::new().unwrap();
         let prev = set_config_home(&temp);
 

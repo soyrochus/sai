@@ -1,10 +1,10 @@
 [package]
-name = "sai"
-version = "0.11.0"
+name = "sai-cli"
+version = "0.12.0"
 edition = "2021"
 authors = ["Iwan van der Kleijn <iwanvanderkleijn@gmail.com>"]
 license = "MIT"
-description = "SAI — Tell the shell what you want, not how to do it. Natural-language to safe shell command generator."
+description = "Sai-cli ('sai') — Tell the shell what you want, not how to do it. Natural-language to safe shell command generator."
 readme = "README.md"
 repository = "https://github.com/your-org/sai"
 
@@ -36,6 +36,10 @@ chrono = { version = "0.4", features = ["clock"] }
 
 # Cross-platform terminal manipulation for interactive prompts
 crossterm = "0.27"
+
+[[bin]]
+name = "sai"
+path = "src/main.rs"
 
 # Optional but strongly recommended for robust UTF-8 conversions
 # (the code already uses String::from_utf8_lossy)

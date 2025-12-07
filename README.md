@@ -1,4 +1,4 @@
-# SAI
+# Sai-cli ('sai')
 
 ## Tell the shell what you want, not how to do it
 
@@ -13,7 +13,7 @@
 </p>
 <!-- markdownlint-enable MD033 -->
 
-**SAI** is a small, fast, Rust-based command-line tool that transforms **natural language** into **safe, real shell commands**, using an LLM — while enforcing strict guardrails to keep execution safe and predictable.
+**Sai-cli** ('sai') is a small, fast, Rust-based command-line tool that transforms **natural language** into **safe, real shell commands**, using an LLM — while enforcing strict guardrails to keep execution safe and predictable.
 
 It is designed for Unix-like environments like Linux and MacOS but builds cleanly on Windows as well.
 
@@ -21,9 +21,9 @@ It is designed for Unix-like environments like Linux and MacOS but builds cleanl
 
 ---
 
-## What SAI Does
+## What sai Does
 
-SAI takes two things:
+Sai takes two things:
 
 1. A **prompt** describing what you want, in plain language  
 2. A **configuration file** describing what tools SAI is allowed to use (e.g. `jq`, `grep`, `sed`, `cat`, …)
@@ -73,6 +73,24 @@ sudo mv sai /usr/local/bin/
 ```
 
 That’s it.
+
+---
+
+## Installation (cargo install)
+
+If you already have Rust tooling set up, install directly from crates.io:
+
+```bash
+cargo install sai-cli
+```
+
+This builds the crate `sai-cli` and drops the `sai` binary into `~/.cargo/bin` (make sure that path is on your `PATH`). Afterwards you can run:
+
+```bash
+sai --help
+```
+
+to verify the install.
 
 ---
 
@@ -226,7 +244,7 @@ Execute this command? [y/N]
 
 ### **Analyze mode**
 
-Analyze the most recent SAI invocation to understand what happened:
+Analyze the most recent sai invocation to understand what happened:
 
 ```bash
 sai --analyze
@@ -324,7 +342,7 @@ The repo ships with ready-to-adapt prompt configs under `prompts/`:
 
 ## History and Analysis
 
-SAI automatically maintains a history log of all invocations in NDJSON format (newline-delimited JSON). Each command execution is recorded with metadata including:
+Sai automatically maintains a history log of all invocations in NDJSON format (newline-delimited JSON). Each command execution is recorded with metadata including:
 
 - Timestamp and working directory
 - Full command-line arguments

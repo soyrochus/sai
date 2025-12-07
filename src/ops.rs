@@ -35,8 +35,8 @@ impl DuplicateResolverIo for StdioDuplicateResolverIo {
     fn read_char(&mut self) -> Result<char> {
         enable_raw_mode().context("Failed to enable raw terminal mode")?;
         let result = loop {
-            if let Event::Key(KeyEvent { code, .. }) = event::read()
-                .context("Failed to read key event")?
+            if let Event::Key(KeyEvent { code, .. }) =
+                event::read().context("Failed to read key event")?
             {
                 if let KeyCode::Char(c) = code {
                     break Ok(c);
@@ -81,10 +81,10 @@ pub fn resolve_duplicate_tools(
                     ))?;
 
                 let c = io.read_char()?.to_ascii_lowercase();
-                
+
                 // Echo the character and newline for visual feedback
                 io.write_str(&format!("{}\n", c))?;
-                
+
                 match c {
                     'o' => {
                         merged[pos] = tool.clone();
@@ -92,7 +92,10 @@ pub fn resolve_duplicate_tools(
                         break;
                     }
                     's' => {
-                        io.write_str(&format!("✓ Skipped tool '{}' (kept existing)\n\n", tool.name))?;
+                        io.write_str(&format!(
+                            "✓ Skipped tool '{}' (kept existing)\n\n",
+                            tool.name
+                        ))?;
                         break;
                     }
                     'c' => {

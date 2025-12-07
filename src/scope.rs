@@ -71,9 +71,7 @@ mod tests {
     #[test]
     fn empty_directory_produces_empty_listing() {
         let dir = tempdir().unwrap();
-        let listing = with_temp_cwd(&dir, || {
-            build_scope_dot_listing().unwrap()
-        });
+        let listing = with_temp_cwd(&dir, || build_scope_dot_listing().unwrap());
         assert_eq!(listing, "");
     }
 
@@ -84,9 +82,7 @@ mod tests {
         File::create(file_path).unwrap();
         let subdir = dir.path().join("subdir");
         fs::create_dir(&subdir).unwrap();
-        let listing = with_temp_cwd(&dir, || {
-            build_scope_dot_listing().unwrap()
-        });
+        let listing = with_temp_cwd(&dir, || build_scope_dot_listing().unwrap());
         assert!(listing.contains("file.txt"));
         assert!(listing.contains("subdir/"));
     }
@@ -101,9 +97,7 @@ mod tests {
             writeln!(file, "data").unwrap();
         }
 
-        let listing = with_temp_cwd(&dir, || {
-            build_scope_dot_listing().unwrap()
-        });
+        let listing = with_temp_cwd(&dir, || build_scope_dot_listing().unwrap());
         assert!(listing.contains(TRUNCATION_NOTE));
         assert!(listing.len() <= SCOPE_DOT_MAX_BYTES);
     }
