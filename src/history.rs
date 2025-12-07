@@ -1,6 +1,6 @@
+use crate::config;
 use anyhow::{Context, Result};
 use chrono::{SecondsFormat, Utc};
-use dirs::config_dir;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -24,8 +24,7 @@ pub struct HistoryEntry {
 pub const HISTORY_MAX_BYTES: u64 = 1_000_000;
 
 pub fn history_log_path() -> PathBuf {
-    let base = config_dir().unwrap_or_else(|| PathBuf::from("."));
-    base.join("sai").join("history.log")
+    config::config_root_dir().join("history.log")
 }
 
 pub fn write_entry(entry: HistoryEntry) -> Result<()> {
@@ -142,34 +141,13 @@ pub fn now_iso_ts() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
-    use std::sync::{Mutex, OnceLock};
+    use crate::config::set_config_dir_override_for_tests;
     use tempfile::TempDir;
-
-    fn env_guard() -> &'static Mutex<()> {
-        static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-        GUARD.get_or_init(|| Mutex::new(()))
-    }
-
-    fn set_config_home(temp: &TempDir) -> Option<String> {
-        let prev = env::var("XDG_CONFIG_HOME").ok();
-        env::set_var("XDG_CONFIG_HOME", temp.path());
-        prev
-    }
-
-    fn restore_config_home(prev: Option<String>) {
-        if let Some(val) = prev {
-            env::set_var("XDG_CONFIG_HOME", val);
-        } else {
-            env::remove_var("XDG_CONFIG_HOME");
-        }
-    }
 
     #[test]
     fn write_and_read_round_trip() {
-        let _lock = env_guard().lock().unwrap();
         let temp = TempDir::new().unwrap();
-        let prev = set_config_home(&temp);
+        let _guard = set_config_dir_override_for_tests(temp.path().join("config"));
 
         let entry = HistoryEntry {
             ts: "2024-01-01T00:00:00Z".to_string(),
@@ -190,15 +168,12 @@ mod tests {
         assert_eq!(latest.generated_command, entry.generated_command);
         assert_eq!(latest.peek_files, entry.peek_files);
         assert!(latest.confirm);
-
-        restore_config_home(prev);
     }
 
     #[test]
     fn rotates_when_size_exceeded() {
-        let _lock = env_guard().lock().unwrap();
         let temp = TempDir::new().unwrap();
-        let prev = set_config_home(&temp);
+        let _guard = set_config_dir_override_for_tests(temp.path().join("config"));
 
         let base_entry = HistoryEntry {
             ts: "2024-01-01T00:00:00Z".to_string(),
@@ -227,7 +202,5 @@ mod tests {
         write_entry(base_entry.clone()).unwrap();
         let latest = read_latest_entry().unwrap().unwrap();
         assert_eq!(latest.notes, base_entry.notes);
-
-        restore_config_home(prev);
     }
 }

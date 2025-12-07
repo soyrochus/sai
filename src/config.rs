@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use dirs::config_dir;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -72,9 +73,47 @@ pub enum EffectiveAiConfig {
     },
 }
 
+thread_local! {
+    static CONFIG_ROOT_OVERRIDE: RefCell<Option<PathBuf>> = RefCell::new(None);
+}
+
+pub fn config_root_dir() -> PathBuf {
+    if let Some(dir) = CONFIG_ROOT_OVERRIDE.with(|cell| cell.borrow().clone()) {
+        return dir;
+    }
+
+    config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("sai")
+}
+
 pub fn find_global_config_path() -> PathBuf {
-    let base = config_dir().unwrap_or_else(|| PathBuf::from("."));
-    base.join("sai").join("config.yaml")
+    config_root_dir().join("config.yaml")
+}
+
+#[cfg(test)]
+pub struct ConfigDirOverrideGuard {
+    prev: Option<PathBuf>,
+}
+
+#[cfg(test)]
+pub fn set_config_dir_override_for_tests<P: Into<PathBuf>>(dir: P) -> ConfigDirOverrideGuard {
+    let dir = dir.into();
+    let prev = CONFIG_ROOT_OVERRIDE.with(|cell| {
+        let mut guard = cell.borrow_mut();
+        std::mem::replace(&mut *guard, Some(dir))
+    });
+    ConfigDirOverrideGuard { prev }
+}
+
+#[cfg(test)]
+impl Drop for ConfigDirOverrideGuard {
+    fn drop(&mut self) {
+        let prev = self.prev.take();
+        CONFIG_ROOT_OVERRIDE.with(|cell| {
+            *cell.borrow_mut() = prev;
+        });
+    }
 }
 
 pub fn load_global_config(path: &Path) -> Result<GlobalConfig> {

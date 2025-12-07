@@ -357,10 +357,12 @@ where
 mod tests {
     use super::*;
     use crate::cli::Cli;
+    use crate::config::set_config_dir_override_for_tests;
     use crate::llm::{ChatClient, CommandGenerator};
     use std::cell::Cell;
     use std::fs;
     use std::io::Cursor;
+    use std::path::Path;
     use tempfile::TempDir;
 
     struct StubGenerator {
@@ -420,9 +422,8 @@ mod tests {
         }
     }
 
-    fn write_minimal_config(temp: &TempDir) {
-        let dir = temp.path().join("sai");
-        fs::create_dir_all(&dir).unwrap();
+    fn write_minimal_config(dir: &Path) {
+        fs::create_dir_all(dir).unwrap();
         let cfg = r#"
 ai:
   provider: openai
@@ -436,25 +437,12 @@ default_prompt:
         fs::write(dir.join("config.yaml"), cfg).unwrap();
     }
 
-    fn set_config_home(temp: &TempDir) -> Option<String> {
-        let prev = env::var("XDG_CONFIG_HOME").ok();
-        env::set_var("XDG_CONFIG_HOME", temp.path());
-        prev
-    }
-
-    fn restore_config_home(prev: Option<String>) {
-        if let Some(val) = prev {
-            env::set_var("XDG_CONFIG_HOME", val);
-        } else {
-            env::remove_var("XDG_CONFIG_HOME");
-        }
-    }
-
     #[test]
     fn analyze_without_history_returns_message() {
         let temp = TempDir::new().unwrap();
-        let prev = set_config_home(&temp);
-        write_minimal_config(&temp);
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
 
         let cli = Cli {
             init: false,
@@ -479,15 +467,14 @@ default_prompt:
         assert_eq!(summary.exit_code, 2);
         assert!(!summary.confirm);
         assert!(!executor.ran());
-
-        restore_config_home(prev);
     }
 
     #[test]
     fn explain_forces_confirmation_and_allows_cancel() {
         let temp = TempDir::new().unwrap();
-        let prev = set_config_home(&temp);
-        write_minimal_config(&temp);
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
 
         let cli = Cli {
             init: false,
@@ -513,7 +500,5 @@ default_prompt:
         assert_eq!(summary.notes.as_deref(), Some("cancelled"));
         assert!(summary.confirm);
         assert!(!executor.ran());
-
-        restore_config_home(prev);
     }
 }
