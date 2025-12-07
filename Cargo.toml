@@ -6,7 +6,7 @@ authors = ["Iwan van der Kleijn <iwanvanderkleijn@gmail.com>"]
 license = "MIT"
 description = "Sai-cli ('sai') — Tell the shell what you want, not how to do it. Natural-language to safe shell command generator."
 readme = "README.md"
-repository = "https://github.com/your-org/sai"
+repository = "https://github.com/soyrochus/sai"
 
 [dependencies]
 anyhow = "1"
