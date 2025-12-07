@@ -298,24 +298,7 @@ pub fn init_global_config(path: &Path) -> Result<()> {
             .with_context(|| format!("Failed to create config directory {}", dir.display()))?;
     }
 
-    let template = r#"ai:
-  provider: openai
-  openai_api_key: changeme
-  openai_model: gpt-4.1-mini
-  # openai_base_url: https://api.openai.com/v1
-  # azure_api_key: changeme
-  # azure_endpoint: https://your-azure-openai-resource.openai.azure.com
-  # azure_deployment: changeme
-  # azure_api_version: 2024-02-15-preview
-
-default_prompt:
-  meta_prompt: |
-    You are SAI, a careful command composer. Only emit a single allowed tool command.
-    Never introduce shell operators such as pipes or redirects unless the operator has
-    explicitly enabled unsafe mode.
-    Add tools to this configuration by running "sai --add-prompt path/to/prompt.yaml".
-  tools: []
-"#;
+    let template = include_str!("../templates/default-config.yaml");
 
     fs::write(path, template)
         .with_context(|| format!("Failed to write default config file to {}", path.display()))?;

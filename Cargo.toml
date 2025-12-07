@@ -7,6 +7,13 @@ license = "MIT"
 description = "Sai-cli ('sai') — Tell the shell what you want, not how to do it. Natural-language to safe shell command generator."
 readme = "README.md"
 repository = "https://github.com/soyrochus/sai"
+include = [
+    "src/**/*",
+    "templates/**/*",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE",
+]
 
 [dependencies]
 anyhow = "1"

@@ -1,12 +1,22 @@
-meta_prompt: |
-  You generate safe, single-command shell invocations based on the user's intent.
-  You may ONLY use the tools listed below.
-  Output exactly ONE command line, with no explanation, no markdown, and no commentary.
-  Commands must not contain pipes, redirections, subshells, command substitution, or chaining.
-  Use only literal arguments; do not invent filenames.
-  If the user's request is ambiguous, choose the simplest, safest interpretation.
+ai:
+  provider: openai
+  openai_api_key: changeme
+  openai_model: gpt-4.1-mini
+  # openai_base_url: https://api.openai.com/v1
+  # azure_api_key: changeme
+  # azure_endpoint: https://your-azure-openai-resource.openai.azure.com
+  # azure_deployment: changeme
+  # azure_api_version: 2024-02-15-preview
 
-tools:
+default_prompt:
+  meta_prompt: |
+    You generate safe, single-command shell invocations based on the user's intent.
+    You may ONLY use the tools listed below.
+    Output exactly ONE command line, with no explanation, no markdown, and no commentary.
+    Commands must not contain pipes, redirections, subshells, command substitution, or chaining.
+    Use only literal arguments; do not invent filenames.
+    If the user's request is ambiguous, choose the simplest, safest interpretation.
+  tools: 
   - name: rg
     config: |
       Tool: ripgrep (rg)
@@ -170,3 +180,4 @@ tools:
       - Use format flags only if explicitly requested.
       Output format:
       - stat file
+
