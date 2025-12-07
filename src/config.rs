@@ -219,9 +219,14 @@ fn env_or(file_value: Option<String>, env_key: &str) -> Option<String> {
 mod tests {
     use super::*;
     use std::env;
+    use std::sync::Mutex;
+
+    // Protects environment-variable mutations so parallel tests don't race.
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn env_override_takes_precedence() {
+        let _guard = ENV_MUTEX.lock().unwrap();
         env::set_var("SAI_PROVIDER", "azure");
         let cfg = resolve_ai_config(None).unwrap_err();
         assert!(cfg
