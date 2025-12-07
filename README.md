@@ -21,9 +21,9 @@ It is designed for Unix-like environments like Linux and MacOS but builds cleanl
 
 ---
 
-## What sai Does
+## What Sai-cli Does
 
-Sai takes two things:
+Sai-cli takes two things:
 
 1. A **prompt** describing what you want, in plain language  
 2. A **configuration file** describing what tools SAI is allowed to use (e.g. `jq`, `grep`, `sed`, `cat`, …)
@@ -342,7 +342,7 @@ The repo ships with ready-to-adapt prompt configs under `prompts/`:
 
 ## History and Analysis
 
-Sai automatically maintains a history log of all invocations in NDJSON format (newline-delimited JSON). Each command execution is recorded with metadata including:
+Sai-cli automatically maintains a history log of all invocations in NDJSON format (newline-delimited JSON). Each command execution is recorded with metadata including:
 
 - Timestamp and working directory
 - Full command-line arguments
@@ -387,10 +387,10 @@ This is particularly useful after errors or unexpected results, as the LLM can e
 
 ## Philosophy
 
-SAI has three principles:
+Sai-cli has three principles:
 
 1. **The shell remains in control.**
-   SAI generates commands — it does not become a shell itself.
+   Sai-cli generates commands — it does not become a shell itself.
 
 2. **Safety first.**
    Default mode blocks pipes, redirections, substitutions, and shell chaining.
