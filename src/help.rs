@@ -212,14 +212,20 @@ pub fn render_help(topic: Option<&str>) -> Result<String, String> {
 pub fn render_top_level_help() -> String {
     let mut output = String::new();
     output.push_str("Sai-cli - Tell the shell what you want, not how to do it.\n\n");
-    output.push_str("Sai-cli turns natural language into validated shell commands using a whitelist\n");
-    output.push_str("of tools and an AI backend. You pick the tools, sai-cli proposes a command.\n");
+    output.push_str(
+        "Sai-cli turns natural language into validated shell commands using a whitelist\n",
+    );
+    output
+        .push_str("of tools and an AI backend. You pick the tools, sai-cli proposes a command.\n");
     output.push_str("Simple mode uses your default prompt; advanced mode lets you point at a\n");
     output.push_str("specific prompt config file when you need different tools, stricter rules,\n");
-    output.push_str("or a dedicated set of helpers. Explain and confirm modes keep execution safe.\n\n");
+    output.push_str(
+        "or a dedicated set of helpers. Explain and confirm modes keep execution safe.\n\n",
+    );
     output.push_str("Common usage:\n");
     output.push_str("  sai \"List all Rust files under src\"\n");
-    output.push_str("  sai prompts/data-focussed-tool.yml \"Summarize columns in access.log.csv\"\n");
+    output
+        .push_str("  sai prompts/data-focussed-tool.yml \"Summarize columns in access.log.csv\"\n");
     output.push_str("  sai --peek sample.json \"Suggest a jq filter for this structure\"\n\n");
     output.push_str("Help topics:\n");
     for entry in TOPIC_ENTRIES {
