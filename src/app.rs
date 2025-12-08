@@ -247,14 +247,26 @@ where
 
     let tokens = validate_and_split_command(&cmd_line, &allowed_tools, cli.unsafe_mode)?;
 
+    // Check if the generated command uses a tool that requires forced explain mode
+    let tool_requires_explain = crate::prompt::should_force_explain(&prompt_cfg.tools, &cmd_line);
+    let effective_explain = cli.explain || tool_requires_explain;
+    let effective_confirm = cli.confirm || cli.unsafe_mode || effective_explain;
+
     let mut summary = RunSummary::from_cli(&cli);
     summary.generated_command = Some(cmd_line.clone());
+    summary.explain = effective_explain;
+    summary.confirm = effective_confirm;
 
-    if cli.explain {
+    if tool_requires_explain && !cli.explain {
+        eprintln!("Note: This tool requires explanation mode (force_explain is enabled)");
+        eprintln!();
+    }
+
+    if effective_explain {
         print_command_explanation(generator, &effective_ai, &cmd_line)?;
     }
 
-    if summary.confirm
+    if effective_confirm
         && !confirm(
             reader,
             &global_config_path,

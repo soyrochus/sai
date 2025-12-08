@@ -285,6 +285,46 @@ Explanation:
 Execute this command? [y/N]
 ```
 
+### **Tool-level safety: force_explain**
+
+Individual tools can be configured to always trigger explain mode, regardless of whether `--explain` was specified on the command line. This provides an additional safety layer for:
+
+- Destructive operations (rm, git push, database writes)
+- Complex commands prone to errors (rsync, tar with multiple flags)
+- Security-sensitive operations (ssh, curl with authentication)
+
+Configure in your tool definition:
+
+```yaml
+tools:
+  - name: rm
+    force_explain: true
+    config: |
+      Tool: rm
+      Role: remove files/directories
+      Rules:
+      - DANGEROUS: This tool deletes data permanently
+      - Always verify paths before execution
+```
+
+When sai-cli generates a command using this tool, you'll automatically get an explanation and confirmation prompt, even without `-e/--explain`:
+
+```bash
+$ sai "remove all temp files"
+>> rm -rf /tmp/*
+Note: This tool requires explanation mode (force_explain is enabled)
+
+Generated command:
+  rm -rf /tmp/*
+
+Explanation:
+  [LLM provides detailed explanation of what will happen]
+
+Execute this command? [y/N]
+```
+
+This defense-in-depth approach ensures critical operations always receive extra scrutiny while maintaining explicit user control via `--explain` for all other tools.
+
 ### **Analyze mode**
 
 Analyze the most recent sai invocation to understand what happened:

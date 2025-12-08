@@ -102,6 +102,41 @@ Same format as `default_prompt`.
 
 If present, it **replaces** the default prompt.
 
+## 3.3 Tool-Level Force Explain
+
+Each `ToolConfig` supports an optional `force_explain` field:
+
+```rust
+pub struct ToolConfig {
+    pub name: String,
+    pub config: String,
+    pub force_explain: Option<bool>,
+}
+```
+
+**Behavior:**
+
+When `force_explain` is `true`, any generated command using that tool will:
+1. Automatically enable explain mode (LLM explains the command)
+2. Implicitly enable confirm mode
+3. Show a note indicating the tool requires explanation
+
+This provides defense-in-depth for dangerous operations while maintaining explicit user control via `--explain` for all other tools.
+
+**Serialization:**
+- `None` → field omitted from YAML
+- `Some(true)` → `force_explain: true` in YAML
+- `Some(false)` → `force_explain: false` in YAML (explicit override)
+
+**Merge behavior during `--add-prompt`:**
+
+When merging tools with duplicate names:
+- If incoming tool has `force_explain: None` and existing has `Some(true)`, the existing value is **preserved**
+- If incoming tool has `force_explain: Some(false)` or `Some(true)`, it **overrides** the existing value
+- User is notified when preservation occurs: "(preserving force_explain from global config)"
+
+This ensures safety flags aren't accidentally lost during config merges while still allowing explicit removal when desired.
+
 ### Prompt authoring helpers
 
 `sai --create-prompt <tool> [path]` emits a template prompt config for a single tool.  

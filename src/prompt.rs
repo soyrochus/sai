@@ -1,4 +1,4 @@
-use crate::config::PromptConfig;
+use crate::config::{PromptConfig, ToolConfig};
 use anyhow::{anyhow, Result};
 
 pub fn build_system_prompt(prompt_cfg: &PromptConfig) -> Result<(String, Vec<String>)> {
@@ -37,4 +37,14 @@ pub fn build_system_prompt(prompt_cfg: &PromptConfig) -> Result<(String, Vec<Str
 
     let full_prompt = system_parts.join("\n\n").trim().to_string();
     Ok((full_prompt, allowed_names))
+}
+
+/// Checks if the generated command uses a tool that requires forced explain mode.
+/// Returns true if the first token of the command matches a tool with force_explain set to true.
+pub fn should_force_explain(tools: &[ToolConfig], command: &str) -> bool {
+    let first_token = command.split_whitespace().next().unwrap_or("");
+
+    tools
+        .iter()
+        .any(|t| t.name == first_token && t.force_explain == Some(true))
 }

@@ -9,6 +9,7 @@ meta_prompt: |
 
 tools:
   - name: git
+    force_explain: true
     config: |
       Tool: git
       Role: full version control operations including inspection and modification.

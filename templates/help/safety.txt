@@ -1,13 +1,28 @@
-Safety in sai-cli has three layers:
+Safety in sai-cli has four layers:
 
 1) Tool whitelist: commands may only use tools defined in the active prompt.
 2) Operator blocking: default mode rejects pipes, redirects, &&, ||, and subshells.
 3) Confirmation: `-c/--confirm` asks before running; `--unsafe` and `--explain`
    always imply confirmation.
+4) Tool-level force_explain: individual tools can require explanation mode via
+   the 'force_explain' configuration field, providing an additional safety layer
+   for destructive or complex operations.
 
 Commands are executed directly (no implicit `/bin/sh -c`). `--explain` and
 `--analyze` are read-only operations that never run shell commands. Use
 `--unsafe` sparingly when you intentionally need operators.
+
+Tool-Level Force Explain:
+Configure tools to automatically trigger --explain behavior:
+
+  tools:
+    - name: rm
+      force_explain: true
+      config: ...
+
+When a command uses this tool, you'll get an explanation and confirmation
+even without specifying --explain. This defense-in-depth approach protects
+against accidental data loss while maintaining explicit user control.
 
 If a generated command surprises you, re-run with `--explain` to see a summary,
 or `--analyze` to review the last invocation from history before trying again.

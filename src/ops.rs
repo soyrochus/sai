@@ -86,7 +86,17 @@ pub fn resolve_duplicate_tools(
 
                 match c {
                     'o' => {
-                        merged[pos] = tool.clone();
+                        let mut merged_tool = tool.clone();
+
+                        // Preserve force_explain from existing if incoming doesn't specify it
+                        if merged_tool.force_explain.is_none() {
+                            if let Some(existing_value) = merged[pos].force_explain {
+                                merged_tool.force_explain = Some(existing_value);
+                                io.write_str("  (preserving force_explain from global config)\n")?;
+                            }
+                        }
+
+                        merged[pos] = merged_tool;
                         io.write_str(&format!("✓ Overwritten tool '{}'\n\n", tool.name))?;
                         break;
                     }
@@ -126,12 +136,12 @@ fn show_conflict(
     ))?;
     io.write_str("Current global definition:\n")?;
     io.write_str(&format!(
-        "name: {}\nconfig:\n{}\n\n",
-        existing.name, existing.config
+        "name: {}\nconfig:\n{}\nforce_explain: {:?}\n\n",
+        existing.name, existing.config, existing.force_explain
     ))?;
     io.write_str(&format!(
-        "Imported definition (from {}):\nname: {}\nconfig:\n{}\n\n",
-        prompt_label, incoming.name, incoming.config
+        "Imported definition (from {}):\nname: {}\nconfig:\n{}\nforce_explain: {:?}\n\n",
+        prompt_label, incoming.name, incoming.config, incoming.force_explain
     ))?;
     Ok(())
 }
@@ -384,10 +394,12 @@ mod tests {
         let existing = vec![ToolConfig {
             name: "echo".to_string(),
             config: "old".to_string(),
+            force_explain: None,
         }];
         let incoming = vec![ToolConfig {
             name: "echo".to_string(),
             config: "new".to_string(),
+            force_explain: None,
         }];
 
         let mut io = MockIo::new(vec!['o'], true);
@@ -409,10 +421,12 @@ mod tests {
         let existing = vec![ToolConfig {
             name: "echo".to_string(),
             config: "old".to_string(),
+            force_explain: None,
         }];
         let incoming = vec![ToolConfig {
             name: "echo".to_string(),
             config: "new".to_string(),
+            force_explain: None,
         }];
 
         let mut io = MockIo::new(vec!['s'], true);
@@ -431,10 +445,12 @@ mod tests {
         let existing = vec![ToolConfig {
             name: "echo".to_string(),
             config: "old".to_string(),
+            force_explain: None,
         }];
         let incoming = vec![ToolConfig {
             name: "echo".to_string(),
             config: "new".to_string(),
+            force_explain: None,
         }];
 
         let mut io = MockIo::new(vec!['c'], true);
@@ -450,10 +466,12 @@ mod tests {
         let existing = vec![ToolConfig {
             name: "echo".to_string(),
             config: "old".to_string(),
+            force_explain: None,
         }];
         let incoming = vec![ToolConfig {
             name: "echo".to_string(),
             config: "new".to_string(),
+            force_explain: None,
         }];
 
         let mut io = MockIo::new(vec![], false);
@@ -462,6 +480,56 @@ mod tests {
         assert!(err
             .to_string()
             .contains("interactive resolution is required"));
+    }
+
+    #[test]
+    fn force_explain_preserved_when_incoming_is_none() {
+        let existing = vec![ToolConfig {
+            name: "rm".to_string(),
+            config: "dangerous".to_string(),
+            force_explain: Some(true),
+        }];
+        let incoming = vec![ToolConfig {
+            name: "rm".to_string(),
+            config: "updated config".to_string(),
+            force_explain: None, // Incoming doesn't specify
+        }];
+
+        let mut io = MockIo::new(vec!['o'], true);
+        let result = resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
+        match result {
+            MergeResult::Applied(tools) => {
+                assert_eq!(tools.len(), 1);
+                assert_eq!(tools[0].config, "updated config");
+                assert_eq!(tools[0].force_explain, Some(true)); // Preserved!
+            }
+            MergeResult::Cancelled => panic!("unexpected cancel"),
+        }
+        assert!(io.output.contains("preserving force_explain"));
+    }
+
+    #[test]
+    fn force_explain_overridden_when_incoming_specifies_false() {
+        let existing = vec![ToolConfig {
+            name: "ls".to_string(),
+            config: "list files".to_string(),
+            force_explain: Some(true),
+        }];
+        let incoming = vec![ToolConfig {
+            name: "ls".to_string(),
+            config: "updated config".to_string(),
+            force_explain: Some(false), // Explicitly set to false
+        }];
+
+        let mut io = MockIo::new(vec!['o'], true);
+        let result = resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap();
+        match result {
+            MergeResult::Applied(tools) => {
+                assert_eq!(tools[0].force_explain, Some(false)); // Overridden
+            }
+            MergeResult::Cancelled => panic!("unexpected cancel"),
+        }
+        assert!(!io.output.contains("preserving force_explain"));
     }
 
     struct MockIo {

@@ -54,6 +54,26 @@ pub struct PromptConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolConfig {
     pub name: String,
+
+    /// Forces explain mode when this tool is used in a generated command.
+    /// When true, the tool automatically triggers --explain behavior even if
+    /// the flag wasn't specified, providing an additional safety layer for
+    /// destructive or complex operations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub force_explain: Option<bool>,
+
+    /// The tool configuration or description.
+    /// Example:
+    ///    Tool: jq
+    ///    Role: filter and transform JSON input.
+    ///    Rules:
+    ///        - Commands must start with "jq".
+    ///        - Use a single filter expression.
+    ///        - Input files must appear at the end of the command.
+    ///        - Do not use shell pipes or redirections; jq must be the only command.
+    ///        - Prefer compact filters that directly express the user's intent.
+    ///        Output format:
+    ///        - jq 'filter' file.json
     pub config: String,
 }
 
@@ -225,11 +245,58 @@ mod tests {
     #[test]
     fn env_override_takes_precedence() {
         let _guard = ENV_MUTEX.lock().unwrap();
-        env::set_var("SAI_PROVIDER", "azure");
+        unsafe {
+            env::set_var("SAI_PROVIDER", "azure");
+        }
         let cfg = resolve_ai_config(None).unwrap_err();
         assert!(cfg
             .to_string()
             .contains("Azure selected but no AZURE API key configured"));
-        env::remove_var("SAI_PROVIDER");
+        unsafe {
+            env::remove_var("SAI_PROVIDER");
+        }
+    }
+
+    #[test]
+    fn tool_config_deserializes_force_explain() {
+        let yaml = r#"
+name: rm
+config: "dangerous"
+force_explain: true
+"#;
+        let tool: ToolConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(tool.force_explain, Some(true));
+    }
+
+    #[test]
+    fn tool_config_defaults_force_explain_to_none() {
+        let yaml = r#"
+name: ls
+config: "safe"
+"#;
+        let tool: ToolConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(tool.force_explain, None);
+    }
+
+    #[test]
+    fn tool_config_skips_serializing_none() {
+        let tool = ToolConfig {
+            name: "echo".to_string(),
+            config: "test".to_string(),
+            force_explain: None,
+        };
+        let yaml = serde_yaml::to_string(&tool).unwrap();
+        assert!(!yaml.contains("force_explain"));
+    }
+
+    #[test]
+    fn tool_config_serializes_force_explain_when_present() {
+        let tool = ToolConfig {
+            name: "rm".to_string(),
+            config: "dangerous".to_string(),
+            force_explain: Some(true),
+        };
+        let yaml = serde_yaml::to_string(&tool).unwrap();
+        assert!(yaml.contains("force_explain: true"));
     }
 }
