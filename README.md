@@ -26,7 +26,7 @@ It is designed for Unix-like environments like Linux and MacOS but builds cleanl
 Sai-cli takes two things:
 
 1. A **prompt** describing what you want, in plain language  
-2. A **configuration file** describing what tools SAI is allowed to use (e.g. `jq`, `grep`, `sed`, `cat`, …)
+2. A **configuration file** describing what tools sai-cli is allowed to use (e.g. `jq`, `grep`, `sed`, `cat`, …)
 
 And it produces:
 
@@ -47,7 +47,7 @@ sai prompts/standard-tools.yml "Count lines in src/app.rs"
 >> wc -l src/app.rs
 ```
 
-You tell the shell **what you want**, and SAI figures out **how** using the tools you have whitelisted.
+You tell the shell **what you want**, and sai-cli figures out **how** using the tools you have whitelisted.
 
 ---
 
@@ -96,7 +96,7 @@ to verify the install.
 
 ## Configuration
 
-SAI loads its global config from the OS-standard location:
+Sai-cli loads its global config from the OS-standard location:
 
 | OS      | Path                                            |
 | ------- | ----------------------------------------------- |
@@ -116,7 +116,7 @@ sai --init
 ```
 
 This writes a starter config with placeholder API credentials and a curated set of standard Unix
-tools (grep, find, awk, sed, sort, wc, etc.) pre-configured. You can immediately start using SAI
+tools (grep, find, awk, sed, sort, wc, etc.) pre-configured. You can immediately start using sai-cli
 after updating your API key, or add more tools later with `sai --add-prompt ...` or your own YAML edits.
 
 ### Example `config.yaml`
@@ -146,6 +146,48 @@ default_prompt:
 ```
 
 Environment variables always override AI configuration.
+
+---
+
+## Built-in Help System
+
+Sai-cli includes a comprehensive hierarchical help system accessible directly from the command line. You can discover all features and concepts without needing to reference external documentation.
+
+### **Getting help**
+
+```bash
+# Show top-level overview and common usage
+sai help
+
+# List all available help topics
+sai help topics
+
+# Get detailed help on a specific topic
+sai help config
+sai help scope
+sai help explain
+```
+
+### **Available topics**
+
+The help system covers:
+
+- **overview** - High-level introduction to sai-cli
+- **quickstart** - Minimal setup and first commands
+- **config** - Global config, AI providers, defaults
+- **tools** - Tool definitions and prompt configs
+- **scope** - How to focus sai-cli on the right files
+- **peek** - Sample data for schema inference (--peek)
+- **safety** - Safety model, operator blocking, confirmation
+- **unsafe** - What --unsafe relaxes and when to use it
+- **explain** - Explain generated commands before running them
+- **analyze** - Analyze the last sai invocation
+- **history** - Where history is stored and how it is used
+- **packages** - Built-in prompt configs under prompts/
+- **ops** - Helper commands (--init, --add-prompt, --list-tools)
+- **advanced** - Simple vs advanced mode, combining flags
+
+Each topic provides detailed explanations, examples, and usage patterns. The help system is designed to be self-contained and progressively discoverable - start with `sai help` and explore from there.
 
 ---
 
@@ -253,11 +295,11 @@ sai --analyze
 
 This mode:
 
-- Reads the last entry from SAI's history log
+- Reads the last entry from sai-cli's history log
 - Asks the LLM to explain what likely happened and why
 - Suggests what to try next
 - **Never executes any commands**
-- Cannot be combined with other SAI parameters
+- Cannot be combined with other sai-cli parameters
 
 Useful for:
 
@@ -272,7 +314,7 @@ $ sai "count lines in all rust files"
 # ... command fails ...
 
 $ sai --analyze
-Analyzing last SAI invocation...
+Analyzing last sai-cli invocation...
 
 The command attempted to run 'wc -l *.rs' but failed because the shell
 glob pattern wasn't expanded. The generated command needed either:
@@ -306,7 +348,7 @@ Add tools from a prompt file to your global default config:
 sai --add-prompt prompts/jq-safe.yaml
 ```
 
-If any tool names already exist, SAI shows both definitions and lets you choose per conflict:
+If any tool names already exist, sai-cli shows both definitions and lets you choose per conflict:
 
 - **O**verwrite the global definition with the imported one
 - **S**kip the imported definition and keep the global one
@@ -316,7 +358,7 @@ In non-interactive contexts (no TTY), duplicates cause a clear error so you can 
 
 ### **List configured tools**
 
-See which tools SAI will allow before running anything:
+See which tools sai-cli will allow before running anything:
 
 ```bash
 sai --list-tools
@@ -363,7 +405,7 @@ The log automatically rotates when it exceeds 1 MB, keeping one backup generatio
 
 ### **Analyzing command history**
 
-Use `--analyze` to review and understand your most recent SAI invocation:
+Use `--analyze` to review and understand your most recent sai-cli invocation:
 
 ```bash
 sai --analyze

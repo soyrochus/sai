@@ -49,6 +49,7 @@ flowchart TD
 - `history`: implements NDJSON-based invocation logging with automatic rotation, plus latest-entry retrieval for the `--analyze` mode.
 - `ops`: shared helpers for `--init`, `--create-prompt`, `--add-prompt`, and `--list-tools`, including the duplicate-resolution helper used during prompt merges.
 - `scope`: utilities for building scope-aware context (currently the `"."` directory listing helper).
+- `help`: hierarchical help system with 15+ topics covering all major features. Provides `try_handle_help()` for early interception of `sai help` commands and `render_help()` for topic-specific content.
 
 Each module is testable in isolation, with the traits (`CommandGenerator`, `CommandExecutor`) providing seam points for mocking inside unit tests.
 
@@ -362,7 +363,65 @@ Both `--explain` and `--analyze` leverage the same LLM backend but serve differe
 
 ---
 
-# 10. Testing Strategy
+# 10. Help System
+
+The `help` module provides a comprehensive, hierarchical help system accessible via `sai help` and `sai help <topic>`. This system is designed to make SAI fully self-documenting from the command line.
+
+## 10.1 Architecture
+
+- **Early interception**: `main.rs` calls `help::try_handle_help()` before normal CLI parsing to intercept `sai help` commands
+- **Topic enumeration**: `HelpTopic` enum defines 15 topics covering all major features
+- **Static content**: Help text is compiled into the binary as `&'static str` constants
+- **Hierarchical navigation**: Users start with `sai help` for overview, then drill into specific topics
+
+## 10.2 Available Topics
+
+The help system covers:
+
+- **overview** - High-level introduction and philosophy
+- **quickstart** - Minimal setup steps and first commands
+- **config** - Global config location, AI providers, environment overrides
+- **tools** - Tool definitions, prompt configs, whitelisting
+- **scope** - Using `-s/--scope` to focus the LLM on relevant files
+- **peek** - Sample data ingestion with `--peek` for schema inference
+- **safety** - Safety model, operator blocking, confirmation prompts
+- **unsafe** - What `--unsafe` relaxes and when to use it
+- **explain** - Command explanation before execution
+- **analyze** - Post-mortem analysis of failed invocations
+- **history** - NDJSON log format, location, rotation
+- **packages** - Built-in prompt configs in `prompts/` directory
+- **ops** - Helper commands (`--init`, `--add-prompt`, `--list-tools`, etc.)
+- **advanced** - Simple vs advanced mode, flag combinations
+- **topics** - List all available topics
+
+## 10.3 Usage Patterns
+
+```bash
+# Show top-level overview and common usage
+sai help
+
+# List all available topics
+sai help topics
+
+# Get detailed help on specific topic
+sai help config
+sai help scope
+sai help explain
+```
+
+## 10.4 Design Principles
+
+- **Self-contained**: No external documentation required for basic usage
+- **Progressively discoverable**: Start broad, drill down as needed
+- **Consistent terminology**: Aligns with README and code
+- **Non-magical**: Plain text, no AI involved in help rendering
+- **Compile-time validated**: Help text is checked at build time
+
+The help system complements the README by providing quick command-line reference for users who want answers without leaving the terminal.
+
+---
+
+# 11. Testing Strategy
 
 - Module-level unit tests cover prompt building, peek truncation, configuration merging, operator detection, executor behaviour, history logging, and rotation. Each test invokes the respective module in isolation without hitting the network.
 - The `app::run_with_dependencies` helper allows integration-style tests to inject mock implementations of `CommandGenerator` or `CommandExecutor` when richer scenarios are needed.
@@ -373,7 +432,7 @@ Both `--explain` and `--analyze` leverage the same LLM backend but serve differe
   - Latest entry retrieval handles empty/malformed logs gracefully
 - Execute `cargo test` to run the suite; no external services are contacted.
 
-# 11. Error Handling
+# 12. Error Handling
 
 Typical error conditions:
 
@@ -390,7 +449,7 @@ All errors include clear diagnostic messages.
 
 ---
 
-# 12. Build and Release
+# 13. Build and Release
 
 SAI provides a GitHub Actions workflow building:
 
@@ -402,6 +461,6 @@ All builds use Rust stable and upload artifacts for release.
 
 ---
 
-# 13. License
+# 14. License
 
 MIT License.
