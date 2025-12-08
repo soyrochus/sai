@@ -1,0 +1,14 @@
+Sai-cli - Tell the shell what you want, not how to do it.
+
+Sai-cli converts natural language instructions into validated shell commands. You
+describe the goal, sai-cli selects from a whitelist of tools in your prompt
+config and proposes a single command to run with optional confirmation.
+
+Principles:
+- The shell remains in control: sai-cli generates commands, it never becomes a shell.
+- Safety first: default mode blocks pipes, redirects, substitution, and chaining until you opt in.
+- Context matters: scopes, prompt configs, and sample data guide the model toward relevant files and data.
+- Transparency: explain and confirm modes show what will run and why before anything executes.
+
+Use `sai help quickstart` for setup, `sai help tools` to shape the tool list, and
+`sai help safety` to understand the guardrails.

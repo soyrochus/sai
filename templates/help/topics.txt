@@ -1,0 +1,15 @@
+Available help topics:
+
+  overview     High-level introduction to sai-cli
+  quickstart   Minimal setup and first commands
+  config       Global config, AI providers, defaults
+  tools        Tool definitions and prompt configs
+  scope        How to focus sai-cli on the right files
+  peek         Sample data for schema inference (--peek)
+  safety       Safety model, operator blocking, confirmation
+  explain      Explain generated commands before running them
+  analyze      Analyze the last sai invocation
+  history      Where history is stored and how it is used
+  packages     Built-in prompt configs under prompts/
+  ops          Helper commands (--init, --add-prompt, --list-tools)
+  advanced     Simple vs advanced mode, combining flags

@@ -1,0 +1,8 @@
+-s/--scope supplies a hint to focus the model. It can be free text, a path, a
+glob, or a short description like "logs/ for errors". Scope narrows the prompt
+context; it does not sandbox execution, so commands still run in your shell.
+
+Special case: `-s .` injects a non-recursive directory listing of the current
+working directory (bounded by an internal size limit) so the model sees nearby
+filenames without extra typing. Use longer scopes (e.g. `-s src/**/*.rs`) to
+steer responses toward relevant files.

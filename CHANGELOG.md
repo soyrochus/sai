@@ -1,5 +1,26 @@
 # Releases/Changelog
 
+## Release v1.0.0 – First Stable Sai-cli
+
+Sai-cli reaches its first stable, full release with improved onboarding, clearer
+help, and refreshed defaults.
+
+Highlights:
+- Stable 1.0.0 version bump with a focus on predictable UX and docs.
+- Help system rewritten with extracted templates for easier maintenance and
+  clearer guidance across all topics.
+- Global init now seeds standard commands by default for faster setup.
+
+What's Changed:
+- Refined help output and topic content (commit 6d9f91f31adbc691318b89faf1c65feee6d6a1a2).
+- Global init now includes the standard command set (commit 6df92e3262696bd508019ba37f6ffedd56410373).
+- Additional fixes and polish captured in the git log for this release.
+- Extracted help templates to `/templates/help` for maintainability and reuse.
+
+Tell the shell what you want, not how to do it.
+
+---
+
 ## Relase v0.12.0 Package Rename & Deterministic Tests
 
 Highlights:

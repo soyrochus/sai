@@ -1,0 +1,16 @@
+A tool is a named capability with instructions for the LLM. Tools are defined in
+`default_prompt.tools` in the global config and in per-call prompt YAML files.
+
+Common operations:
+- Create a template: `sai --create-prompt <command> [path]`.
+- Merge tools into the global default: `sai --add-prompt prompts/data-focussed-tool.yml`.
+- List what is allowed: `sai --list-tools [prompt.yml]`.
+- Keep experiments isolated: point sai-cli at a prompt file first to try a new
+  toolset without altering your default.
+
+Safety: only tools listed in the active prompt are allowed. The starter config
+already includes a curated set of common Unix tools; prompt packages like
+`prompts/data-focussed-tool.yml`, `prompts/git-safe.yml`, or
+`prompts/safe-destructive-tools.yml` add focused capabilities. Default mode also
+blocks pipes/redirects; add `--unsafe` to relax operators, but tools stay
+whitelisted.

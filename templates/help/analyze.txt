@@ -1,0 +1,6 @@
+--analyze reads the most recent history entry and asks the LLM to explain what
+likely happened, why it succeeded or failed, and what to try next. It never
+executes commands and cannot be combined with other options or prompts.
+
+Run it after an error or surprising output to get guidance. Pair with history
+inspection if you want to review older invocations manually.

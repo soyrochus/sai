@@ -1,0 +1,6 @@
+--unsafe keeps the tool whitelist but disables operator blocking so pipes,
+redirects, substitution, and chaining are allowed. It always forces a prompt
+before execution. Pair it with `--explain` when you want extra clarity.
+
+Use --unsafe when a single safe command is impossible; prefer explicit tools,
+scopes, and confirm/explain first.

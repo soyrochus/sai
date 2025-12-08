@@ -1,0 +1,20 @@
+Helper operations that do not invoke the LLM:
+
+- `--init` writes a starter config.yaml with placeholder AI credentials and
+  standard Unix tools (grep, find, awk, sed, etc.) pre-configured.
+- `--create-prompt <command> [path]` writes a per-call prompt template.
+- `--add-prompt PATH` merges additional tools from PATH into the global default
+  prompt, resolving conflicts interactively when a TTY is available.
+- `--list-tools [PATH]` prints tools from the global config and optionally a
+  prompt file, marking which ones are on PATH.
+
+Examples:
+  sai --init
+  sai --add-prompt prompts/git-safe.yml      # Add git tools
+  sai --add-prompt prompts/data-focussed-tool.yml  # Add jq, yq, csvkit
+  sai --list-tools
+
+The standard tools are already included by --init. Use --add-prompt to extend
+with specialized toolsets like git or data processing tools. `--create-prompt`
+is handy for building a one-off prompt file that you can refine before merging
+into your defaults.

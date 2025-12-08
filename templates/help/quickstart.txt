@@ -1,0 +1,18 @@
+Sai-cli needs an AI key (OpenAI or Azure) and the `sai` binary on your PATH.
+
+1) Run `sai --init` to create a starter config at the platform default location.
+   This seeds `default_prompt` with a curated set of common Unix tools.
+2) Edit config.yaml: set provider, API key, model, and optionally tweak the
+   default_prompt tools or meta prompt.
+3) Optionally merge more tools: `sai --add-prompt prompts/data-focussed-tool.yml`
+   or `sai --add-prompt prompts/git-safe.yml` to bring in task-specific helpers.
+4) Run a first command.
+
+Copy-paste:
+  sai --init
+  sai "List all Rust files under src"
+  sai prompts/data-focussed-tool.yml "Summarize CSV columns under logs/"
+
+Simple mode (`sai "<prompt>"`) uses default_prompt. Advanced mode takes a prompt
+file first so you can swap toolsets per run. Ensure both `sai` and your tools
+are on PATH.

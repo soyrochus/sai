@@ -1,0 +1,10 @@
+Prompt packages ship under prompts/ so you can start quickly or extend them
+beyond the default tools bundled by `sai --init`:
+
+- prompts/data-focussed-tool.yml     Data-centric tools (jq, yq, csvkit, mlr, ...)
+- prompts/safe-destructive-tools.yml Destructive-capable tools with guardrails
+- prompts/git-safe.yml               Read-only git operations
+- prompts/git-full.yml               Full git workflows (confirm strongly advised)
+
+Use them directly: `sai prompts/data-focussed-tool.yml "List json files under logs"`.
+Copy and edit to suit your environment or merge with `--add-prompt`.

@@ -1,0 +1,13 @@
+-e/--explain generates the command, asks the LLM to summarize it, prints the
+explanation, and then asks for confirmation before execution. No command runs
+until you approve.
+
+Example shape:
+Generated command:
+  find . -name '*.py'
+
+Explanation:
+  Searches for Python files under the current directory.
+
+Use explain mode when learning a new toolset, when using --unsafe, or whenever
+you want to sanity-check the intent before running anything.

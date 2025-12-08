@@ -1,0 +1,7 @@
+--peek sends truncated sample data to the LLM for schema inference. Each file is
+read up to an internal byte limit and clearly marked as sample data. Use it to
+show record layout, not to process full datasets. Multiple --peek flags are
+allowed to provide several examples.
+
+Only include files you are comfortable sending to the provider. Avoid secrets,
+tokens, or large proprietary dumps; peek is for structure, not content upload.

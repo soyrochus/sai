@@ -1,0 +1,15 @@
+Simple mode: `sai "<prompt>"` uses `default_prompt` from the global config.
+Advanced mode: `sai prompt.yml "<prompt>"` uses a specific prompt file so you
+can swap toolsets per request. Prefer advanced mode when you need specialized
+tools (data, git, destructive) without changing your defaults.
+
+Combine flags as needed:
+- `--scope` to steer the model toward the right files.
+- `--peek` to show sample data.
+- `--explain` or `--confirm` for interactive review.
+- `--unsafe` when you explicitly allow operators.
+- `--analyze` after a run to review the last command before iterating.
+
+Environment variables (`SAI_*`) override AI config, which is handy for switching
+providers or models per shell session. Ensure required tools are on PATH or use
+absolute paths in tool names for clarity.

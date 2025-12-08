@@ -1,6 +1,6 @@
 [package]
 name = "sai-cli"
-version = "0.12.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["Iwan van der Kleijn <iwanvanderkleijn@gmail.com>"]
 license = "MIT"

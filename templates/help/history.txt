@@ -1,0 +1,11 @@
+sai-cli records each invocation as NDJSON in a history log with timestamp, cwd,
+argv, generated command, flags, and notes.
+
+Log locations:
+- Linux: ~/.config/sai/history.log
+- macOS: ~/Library/Application Support/sai/history.log
+- Windows: %APPDATA%/sai/history.log
+
+Files rotate around 1 MB, keeping one backup. `--analyze` reads this log.
+You can inspect it directly for auditing or troubleshooting, and copy entries
+to share commands without re-running them.

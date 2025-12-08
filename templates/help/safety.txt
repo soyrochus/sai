@@ -1,0 +1,13 @@
+Safety in sai-cli has three layers:
+
+1) Tool whitelist: commands may only use tools defined in the active prompt.
+2) Operator blocking: default mode rejects pipes, redirects, &&, ||, and subshells.
+3) Confirmation: `-c/--confirm` asks before running; `--unsafe` and `--explain`
+   always imply confirmation.
+
+Commands are executed directly (no implicit `/bin/sh -c`). `--explain` and
+`--analyze` are read-only operations that never run shell commands. Use
+`--unsafe` sparingly when you intentionally need operators.
+
+If a generated command surprises you, re-run with `--explain` to see a summary,
+or `--analyze` to review the last invocation from history before trying again.

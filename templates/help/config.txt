@@ -1,0 +1,16 @@
+Global config for sai-cli lives at:
+- Linux: ~/.config/sai/config.yaml
+- macOS: ~/Library/Application Support/sai/config.yaml
+- Windows: %APPDATA%/sai/config.yaml
+
+Sections:
+- ai: provider (openai|azure), credentials, model, and optional base URL/endpoint.
+  Env vars override file values: SAI_PROVIDER, SAI_OPENAI_API_KEY/BASE_URL/MODEL,
+  SAI_AZURE_API_KEY/ENDPOINT/DEPLOYMENT/API_VERSION.
+- default_prompt: meta_prompt plus tools[]. Used whenever you omit a per-call
+  prompt YAML. Provide a prompt file as the first argument to override.
+- history: optional customization for log path/rotation if you differ from defaults.
+
+`sai --init` writes a starter config with placeholder credentials and a built-in
+set of everyday tools. Environment variables are the quickest way to swap models
+or providers per shell without editing the file.
