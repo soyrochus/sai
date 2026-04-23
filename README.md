@@ -125,7 +125,12 @@ after updating your API key, or add more tools later with `sai --add-prompt ...`
 ai:
   provider: openai
   openai_api_key: "replace_with_your_key"
-  openai_model: "gpt-5.1-mini"
+  openai_api_mode: "responses"
+  openai_model: "gpt-5.4-mini"
+  # Optional: pin a dated snapshot instead of the alias above
+  # openai_model_snapshot: "gpt-5.4-mini-2026-03-17"
+  # Optional: low | medium | high
+  # openai_reasoning_effort: "medium"
 
 default_prompt:
   meta_prompt: |
@@ -145,7 +150,10 @@ default_prompt:
         - Use jq filters to transform the JSON.
 ```
 
-Environment variables always override AI configuration.
+Environment variables always override AI configuration. For OpenAI, the most
+useful overrides are `SAI_OPENAI_API_KEY`, `SAI_OPENAI_BASE_URL`,
+`SAI_OPENAI_API_MODE`, `SAI_OPENAI_MODEL`, `SAI_OPENAI_MODEL_SNAPSHOT`, and
+`SAI_OPENAI_REASONING_EFFORT`.
 
 ---
 

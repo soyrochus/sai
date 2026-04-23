@@ -75,7 +75,10 @@ Configures the provider:
 ai:
 provider: openai | azure
 openai_api_key: …
+openai_api_mode: responses | chat_completions
 openai_model: …
+openai_model_snapshot: … # optional
+openai_reasoning_effort: … # optional
 azure_api_key: …
 azure_endpoint: …
 azure_deployment: …
@@ -83,7 +86,8 @@ azure_api_version: …
 
 ```
 
-Environment variables override these fields.
+Environment variables override these fields. For OpenAI, SAI defaults to the
+Responses API when `openai_api_mode` is omitted.
 
 ### `default_prompt`  
 Defines:

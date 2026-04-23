@@ -4,13 +4,14 @@ Global config for sai-cli lives at:
 - Windows: %APPDATA%/sai/config.yaml
 
 Sections:
-- ai: provider (openai|azure), credentials, model, and optional base URL/endpoint.
-  Env vars override file values: SAI_PROVIDER, SAI_OPENAI_API_KEY/BASE_URL/MODEL,
-  SAI_AZURE_API_KEY/ENDPOINT/DEPLOYMENT/API_VERSION.
+- ai: provider (openai|azure), credentials, model, optional OpenAI API mode,
+  optional model snapshot, optional reasoning effort, and optional base URL/endpoint.
+  Env vars override file values: SAI_PROVIDER, SAI_OPENAI_API_KEY/BASE_URL/API_MODE/MODEL/
+  MODEL_SNAPSHOT/REASONING_EFFORT, SAI_AZURE_API_KEY/ENDPOINT/DEPLOYMENT/API_VERSION.
 - default_prompt: meta_prompt plus tools[]. Used whenever you omit a per-call
   prompt YAML. Provide a prompt file as the first argument to override.
 - history: optional customization for log path/rotation if you differ from defaults.
 
 `sai --init` writes a starter config with placeholder credentials and a built-in
-set of everyday tools. Environment variables are the quickest way to swap models
-or providers per shell without editing the file.
+set of everyday tools. OpenAI defaults to the Responses API with `gpt-5.4-mini`.
+Use `openai_api_mode: chat_completions` only for compatibility.
