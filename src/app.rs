@@ -72,10 +72,19 @@ pub fn run() -> Result<()> {
     }
 
     let cli = Cli::parse();
-    let generator = HttpCommandGenerator::new();
     let executor = ShellCommandExecutor;
-    let exit_code = run_and_log(cli, &generator, &executor);
+    let exit_code = if requires_generator(&cli) {
+        let generator = HttpCommandGenerator::new();
+        run_and_log(cli, &generator, &executor)
+    } else {
+        let generator = NoopGenerator;
+        run_and_log(cli, &generator, &executor)
+    };
     std::process::exit(exit_code);
+}
+
+fn requires_generator(cli: &Cli) -> bool {
+    !cli.init && cli.create_prompt.is_none() && cli.add_prompt.is_none() && !cli.list_tools
 }
 
 fn run_and_log<G, E>(cli: Cli, generator: &G, executor: &E) -> i32
@@ -378,6 +387,33 @@ where
 
     println!("{}", explanation);
     Ok(summary)
+}
+
+struct NoopGenerator;
+
+impl CommandGenerator for NoopGenerator {
+    fn generate(
+        &self,
+        _ai: &crate::config::EffectiveAiConfig,
+        _system_prompt: &str,
+        _nl_prompt: &str,
+        _scope_hint: Option<&str>,
+        _peek_text: Option<&str>,
+    ) -> Result<String> {
+        Err(anyhow!("LLM generator should not be used for this command"))
+    }
+}
+
+impl ChatClient for NoopGenerator {
+    fn respond(
+        &self,
+        _ai: &crate::config::EffectiveAiConfig,
+        _system_prompt: &str,
+        _user_prompt: &str,
+        _temperature: f32,
+    ) -> Result<String> {
+        Err(anyhow!("Chat client should not be used for this command"))
+    }
 }
 
 #[cfg(test)]
