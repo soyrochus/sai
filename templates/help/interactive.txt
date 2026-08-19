@@ -1,0 +1,36 @@
+Run `sai` with no prompt in a terminal and it opens a mini editor to compose
+your natural language prompt, so you can edit before you commit to a request.
+
+    $ sai
+    sai> find every json file changed this week
+
+Modes:
+- `sai "<prompt>"`      runs the prompt directly, exactly as before
+- `sai`                 opens the editor (terminal sessions only)
+- `sai -i "<prompt>"`   opens the editor pre-loaded with that text
+- `sai --no-interactive` reads one line from stdin, no editor
+- Piped or redirected stdin never opens the editor
+
+Editing keys:
+- Left/Right, Home/End   move the cursor
+- Backspace / Delete     remove a character
+- Ctrl+A / Ctrl+E        jump to start / end of line
+- Ctrl+K / Ctrl+U        delete to end / start of line
+- Ctrl+L                 clear and redraw the prompt area
+- Enter                  submit the prompt
+- Esc or Ctrl+C          cancel without generating anything
+
+Prompt history:
+- Up / Down              walk through prior prompts, newest first
+- Ctrl+R                 reverse search; Ctrl+R again steps to older matches
+- Esc                    leave search, restoring what you had typed
+
+Recalled prompts are fully editable before you submit them. Submitted prompts
+are saved to a prompt history file; see `sai help history` for its location.
+
+The editor composes prompts only. It is not a shell: pipes, redirects and job
+control are plain text to it, and it handles one prompt per invocation.
+
+Per-call prompt configs work here too:
+
+    sai -i --prompt-config prompts/jq.yaml

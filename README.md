@@ -26,6 +26,19 @@ Current release and toolchain:
 
 ---
 
+## Changes in v1.2.0
+
+- Added an **interactive mini editor** for composing prompts. Run `sai` with no
+  prompt in a terminal and it opens an editable prompt line instead of failing
+  with a missing-argument error.
+- Added **persistent prompt history** with Up/Down navigation and `Ctrl+R`
+  reverse search, stored separately from the execution history log.
+- Added `--interactive` / `-i`, `--no-interactive`, and `--prompt-config`.
+- Passing a prompt as an argument is unchanged: it runs directly, without the
+  editor. Piped and redirected input never opens the editor.
+
+---
+
 ## Changes in v1.1.0
 
 - Updated OpenAI model and API integration behavior to align with latest configuration defaults and request handling.
@@ -209,6 +222,7 @@ The help system covers:
 - **unsafe** - What --unsafe relaxes and when to use it
 - **explain** - Explain generated commands before running them
 - **analyze** - Analyze the last sai invocation
+- **interactive** - Mini editor, key bindings, prompt history
 - **history** - Where history is stored and how it is used
 - **packages** - Built-in prompt configs under prompts/
 - **ops** - Helper commands (--init, --add-prompt, --list-tools)
@@ -219,6 +233,47 @@ Each topic provides detailed explanations, examples, and usage patterns. The hel
 ---
 
 ## Usage
+
+### **Interactive mode** (default when no prompt is given)
+
+Run `sai` in a terminal with no prompt and it opens a mini editor:
+
+```bash
+$ sai
+sai> find every json file changed this week
+```
+
+Edit the prompt before you submit it, and recall earlier prompts without
+retyping them:
+
+| Key                     | Action                                        |
+| ----------------------- | --------------------------------------------- |
+| Left / Right            | Move the cursor                               |
+| Home / End              | Jump to start / end of line                   |
+| Backspace / Delete      | Remove a character                            |
+| `Ctrl+A` / `Ctrl+E`     | Jump to start / end of line                   |
+| `Ctrl+K` / `Ctrl+U`     | Delete to end / start of line                 |
+| `Ctrl+L`                | Clear and redraw the prompt area              |
+| Up / Down               | Walk through prior prompts, newest first      |
+| `Ctrl+R`                | Reverse search; press again for older matches |
+| Enter                   | Submit the prompt                             |
+| Esc / `Ctrl+C`          | Cancel without generating anything            |
+
+Recalled prompts are fully editable before submission.
+
+Controlling the mode:
+
+```bash
+sai "show all active users"      # runs directly, no editor (unchanged)
+sai                              # opens the editor
+sai -i "show all active users"   # opens the editor, pre-filled with that text
+sai --no-interactive             # reads one line from stdin, no editor
+echo "show users" | sai          # piped input never opens the editor
+sai -i --prompt-config mytools.yaml   # editor, with a per-call prompt config
+```
+
+The editor composes prompts only. It is not a shell — pipes, redirects and job
+control are plain text to it — and it handles one prompt per invocation.
 
 ### **Simple mode**
 
@@ -469,6 +524,28 @@ Sai-cli automatically maintains a history log of all invocations in NDJSON forma
 | Windows | `%APPDATA%\sai\history.log`                       |
 
 The log automatically rotates when it exceeds 1 MB, keeping one backup generation.
+
+### **Prompt history**
+
+Submitted prompts are recorded separately, in the same directory, as NDJSON:
+
+| OS      | Path                                                    |
+| ------- | ------------------------------------------------------- |
+| Linux   | `~/.config/sai/prompt_history.log`                      |
+| macOS   | `~/Library/Application Support/sai/prompt_history.log`  |
+| Windows | `%APPDATA%\sai\prompt_history.log`                      |
+
+This file holds only the natural language prompts you submitted, with
+timestamps, and is what the interactive editor navigates with Up/Down and
+`Ctrl+R`. Consecutive duplicates are collapsed, and it rotates at 256 KB
+keeping one backup. On Unix it is created readable by its owner only.
+
+Prompts can contain host names, paths and other details from your environment.
+To clear the history, delete the file:
+
+```bash
+rm ~/.config/sai/prompt_history.log*
+```
 
 ### **Analyzing command history**
 

@@ -55,11 +55,18 @@ Clap declares the two flags mutually exclusive via `conflicts_with`, satisfying 
 
 Rationale: keeping precedence in one pure function makes the spec's mode-selection scenarios directly testable and prevents the branching from spreading through `run_with_reader`.
 
-### `--interactive` disambiguates the one-argument advanced-mode case
+### A `--prompt-config` flag carries the per-call config in editor mode
 
-Today `sai foo.yaml` (a single argument) means "simple mode, prompt text is `foo.yaml`" — arg1 is only read as a config path when a second argument is present ([src/app.rs:224-237](src/app.rs#L224-L237)). Under `--interactive` the prompt comes from the editor, so a lone `arg1` is unambiguous and is read as the per-call config path. Without `--interactive`, `sai foo.yaml` keeps its current meaning exactly.
+Today `sai foo.yaml` (a single argument) means "simple mode, prompt text is `foo.yaml`" — arg1 is only read as a config path when a second argument is present ([src/app.rs:224-237](src/app.rs#L224-L237)). That positional rule cannot also express "editor mode, and this argument is the config", because under `--interactive` a lone argument is equally plausible as prefill text. A new `--prompt-config <PATH>` flag resolves it: the config path is always named explicitly, and a positional argument always means prompt text.
 
-Alternative considered: sniff whether `arg1` names an existing `.yaml`/`.yml` file and switch modes on that. Rejected — a file named `notes.yaml` in the working directory would silently change what a prompt means, and the failure would be confusing. Requiring the explicit flag costs one word and removes the guesswork.
+- `sai --interactive "find large files"` → editor prefilled with that text.
+- `sai --interactive --prompt-config jq.yaml` → editor, with `jq.yaml` as the per-call config.
+- `sai --prompt-config jq.yaml "count records"` → no editor, same as positional advanced mode.
+- `sai jq.yaml "count records"` and `sai foo.yaml` keep their current meanings exactly.
+
+Rationale: it removes the ambiguity without positional guessing, and the flag is independently useful — it makes advanced mode explicit instead of relying on argument count. When `--prompt-config` is given, `arg1` is always the natural-language prompt, never a config path.
+
+Alternatives considered: (a) sniff whether `arg1` names an existing `.yaml`/`.yml` file — rejected, since a file named `notes.yaml` in the working directory would silently change what a prompt means, and the failure would be confusing; (b) make a lone argument under `--interactive` always a config path — rejected, it removes prefill, which is the more common of the two uses.
 
 ### Prompt history mirrors `history.rs` rather than extending it
 
@@ -104,5 +111,5 @@ Rollback is removal of the two new modules and the two flags; the prompt-history
 
 ## Open Questions
 
-- Should the byte cap for `prompt_history.log` match `HISTORY_MAX_BYTES` (1 MB) or be smaller? Prompts are far shorter than execution records, so 1 MB stores a very large number of them. Deferrable — it is a constant, changeable without touching specs or task structure.
-- Whether wide-character alignment needs `unicode-width` or whether character count suffices for the terminals in practice. Resolvable during implementation of the rendering task; it does not change the spec or the approach.
+- ~~Should the byte cap for `prompt_history.log` match `HISTORY_MAX_BYTES` (1 MB) or be smaller?~~ **Resolved during implementation**: 256 KB, which holds several thousand typical prompts while keeping startup reads cheap.
+- ~~Whether wide-character alignment needs `unicode-width`.~~ **Resolved during implementation**: a local `display_width` helper covering the CJK and emoji ranges was enough, so no new dependency was added.

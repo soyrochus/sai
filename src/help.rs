@@ -10,6 +10,7 @@ pub enum HelpTopic {
     Unsafe,
     Explain,
     Analyze,
+    Interactive,
     History,
     Packages,
     Ops,
@@ -33,6 +34,7 @@ impl HelpTopic {
             "unsafe" => Some(Self::Unsafe),
             "explain" => Some(Self::Explain),
             "analyze" | "analyse" => Some(Self::Analyze),
+            "interactive" | "editor" | "prompt-history" => Some(Self::Interactive),
             "history" | "logs" => Some(Self::History),
             "packages" | "package" => Some(Self::Packages),
             "ops" | "operations" => Some(Self::Ops),
@@ -54,6 +56,7 @@ impl HelpTopic {
             HelpTopic::Unsafe => "unsafe",
             HelpTopic::Explain => "explain",
             HelpTopic::Analyze => "analyze",
+            HelpTopic::Interactive => "interactive",
             HelpTopic::History => "history",
             HelpTopic::Packages => "packages",
             HelpTopic::Ops => "ops",
@@ -74,6 +77,7 @@ impl HelpTopic {
             HelpTopic::Unsafe => "What --unsafe relaxes and when to use it",
             HelpTopic::Explain => "Explain generated commands before running them",
             HelpTopic::Analyze => "Analyze the last sai invocation",
+            HelpTopic::Interactive => "Mini editor, key bindings, prompt history",
             HelpTopic::History => "Where history is stored and how it is used",
             HelpTopic::Packages => "Built-in prompt configs under prompts/",
             HelpTopic::Ops => "Helper commands (--init, --add-prompt, --list-tools)",
@@ -94,6 +98,7 @@ impl HelpTopic {
             HelpTopic::Unsafe => UNSAFE_HELP,
             HelpTopic::Explain => EXPLAIN_HELP,
             HelpTopic::Analyze => ANALYZE_HELP,
+            HelpTopic::Interactive => INTERACTIVE_HELP,
             HelpTopic::History => HISTORY_HELP,
             HelpTopic::Packages => PACKAGES_HELP,
             HelpTopic::Ops => OPS_HELP,
@@ -146,6 +151,10 @@ const TOPIC_ENTRIES: &[TopicEntry] = &[
         description: HelpTopic::Analyze.short_description(),
     },
     TopicEntry {
+        topic: HelpTopic::Interactive,
+        description: HelpTopic::Interactive.short_description(),
+    },
+    TopicEntry {
         topic: HelpTopic::History,
         description: HelpTopic::History.short_description(),
     },
@@ -163,15 +172,23 @@ const TOPIC_ENTRIES: &[TopicEntry] = &[
     },
 ];
 
-pub const CLI_USAGE: &str = "sai [FLAGS] [PROMPT_CONFIG] \"<natural language prompt>\"";
+pub const CLI_USAGE: &str = "sai [FLAGS] [PROMPT_CONFIG] [\"<natural language prompt>\"]";
 pub const CLI_ABOUT: &str = "Sai-cli ('sai') - Tell the shell what you want, not how to do it";
 pub const CLI_LONG_ABOUT: &str = "Natural language to safe shell commands using whitelisted tools and an AI backend. Run 'sai help topics' for detailed guidance.";
-pub const CLI_AFTER_HELP: &str = r#"Common flags:
+pub const CLI_AFTER_HELP: &str = r#"Prompt input:
+  Pass the prompt as an argument to run it directly. Omit it in a terminal and
+  sai opens a mini editor to compose one, with Up/Down and Ctrl+R over your
+  prompt history. Run 'sai help interactive' for the key bindings.
+
+Common flags:
   -s, --scope <SCOPE>     Provide a path or hint to restrict context
   -p, --peek <FILE>...    Send sample file(s) for schema inference
   -c, --confirm           Ask before executing the generated command
   -u, --unsafe            Allow pipes and redirects (always implies confirm)
   -e, --explain           Explain the generated command, then ask to confirm
+  -i, --interactive       Compose the prompt in the mini editor
+      --no-interactive    Never open the editor; read one line from stdin
+      --prompt-config P   Use P as the per-call prompt config
       --analyze           Explain the last sai invocation, do not run anything
       --init              Create a starter config.yaml
       --add-prompt PATH   Merge tools from a prompt file into the global config
@@ -270,6 +287,7 @@ const SAFETY_HELP: &str = include_str!("../templates/help/safety.txt");
 const UNSAFE_HELP: &str = include_str!("../templates/help/unsafe.txt");
 const EXPLAIN_HELP: &str = include_str!("../templates/help/explain.txt");
 const ANALYZE_HELP: &str = include_str!("../templates/help/analyze.txt");
+const INTERACTIVE_HELP: &str = include_str!("../templates/help/interactive.txt");
 const HISTORY_HELP: &str = include_str!("../templates/help/history.txt");
 const PACKAGES_HELP: &str = include_str!("../templates/help/packages.txt");
 const OPS_HELP: &str = include_str!("../templates/help/ops.txt");
@@ -354,6 +372,10 @@ mod tests {
             (
                 HelpTopic::Analyze,
                 include_str!("../templates/help/analyze.txt"),
+            ),
+            (
+                HelpTopic::Interactive,
+                include_str!("../templates/help/interactive.txt"),
             ),
             (
                 HelpTopic::History,

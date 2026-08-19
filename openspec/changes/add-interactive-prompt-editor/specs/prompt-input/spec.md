@@ -18,10 +18,20 @@ When the user supplies a natural-language prompt on the command line, SAI SHALL 
 - **WHEN** the user runs `sai jq-prompt.yaml "count records per file"`
 - **THEN** SAI loads the per-call prompt config and uses the second argument as the prompt without displaying an editor
 
+#### Scenario: Per-call config supplied by flag
+
+- **WHEN** the user runs `sai --prompt-config jq-prompt.yaml "count records per file"`
+- **THEN** SAI loads the per-call prompt config and uses the positional argument as the prompt without displaying an editor
+
 #### Scenario: Explicit editor request with an argument present
 
 - **WHEN** the user runs `sai --interactive "find large files"`
 - **THEN** SAI opens the editor with `find large files` pre-loaded in the buffer as editable text
+
+#### Scenario: Positional argument under `--interactive` is never a config path
+
+- **WHEN** the user runs `sai --interactive notes.yaml` while a file named `notes.yaml` exists in the working directory
+- **THEN** SAI opens the editor pre-loaded with the literal text `notes.yaml` and does not read that file as a prompt config
 
 ### Requirement: Interactive editor is the default when no prompt argument is given
 
@@ -34,7 +44,7 @@ When no natural-language prompt is supplied and standard input is a terminal, SA
 
 #### Scenario: Explicit editor request with a per-call config
 
-- **WHEN** the user runs `sai --interactive jq-prompt.yaml`
+- **WHEN** the user runs `sai --interactive --prompt-config jq-prompt.yaml`
 - **THEN** SAI loads `jq-prompt.yaml` as the per-call prompt config and opens the editor to compose the prompt
 
 #### Scenario: Submitted prompt enters the normal flow

@@ -1,4 +1,4 @@
-use crate::cli::Cli;
+use crate::cli::{resolve_prompt_config_path, resolve_prompt_source, Cli, PromptSource};
 use crate::config::{
     find_global_config_path, load_global_config, load_prompt_config, resolve_ai_config,
 };
@@ -7,13 +7,15 @@ use crate::help;
 use crate::history::{self, HistoryEntry};
 use crate::llm::{ChatClient, CommandGenerator, HttpCommandGenerator};
 use crate::ops;
+use crate::editor;
 use crate::peek::build_peek_context;
+use crate::prompt_history;
 use crate::prompt::build_system_prompt;
 use crate::safety::validate_and_split_command;
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use std::env;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -217,14 +219,10 @@ where
         return run_analyze(&global_cfg, generator);
     }
 
-    let arg1 = cli.arg1.clone().ok_or_else(|| {
-        anyhow!("Expected a prompt or prompt config path when not running with --init")
-    })?;
-
     let (prompt_cfg, prompt_source): (crate::config::PromptConfig, Option<PathBuf>) =
-        match cli.prompt.as_ref() {
-            Some(_nl_prompt) => {
-                let cfg_path = PathBuf::from(&arg1);
+        match resolve_prompt_config_path(&cli) {
+            Some(path) => {
+                let cfg_path = PathBuf::from(path);
                 let prompt_cfg = load_prompt_config(&cfg_path)?;
                 (prompt_cfg, Some(cfg_path))
             }
@@ -236,7 +234,18 @@ where
             }
         };
 
-    let nl_prompt = cli.prompt.clone().unwrap_or_else(|| arg1.clone());
+    let nl_prompt = match acquire_prompt(&cli, reader)? {
+        Some(prompt) => prompt,
+        None => {
+            eprintln!("Cancelled.");
+            let mut summary = RunSummary::from_cli(&cli);
+            summary.exit_code = 0;
+            summary.notes = Some("cancelled".to_string());
+            return Ok(summary);
+        }
+    };
+
+    prompt_history::record(&nl_prompt);
 
     let (system_prompt, allowed_tools) = build_system_prompt(&prompt_cfg)?;
     let peek_context = build_peek_context(&cli.peek)?;
@@ -294,6 +303,32 @@ where
     let status = executor.execute(&cmd_line, &tokens, cli.unsafe_mode)?;
     summary.exit_code = status;
     Ok(summary)
+}
+
+/// Obtain the natural language prompt for this run.
+///
+/// Returns `Ok(None)` when the user cancelled composition. The chosen input
+/// mode is the only thing that varies here; the prompt string it produces goes
+/// through exactly the same downstream flow either way.
+fn acquire_prompt<R>(cli: &Cli, reader: &mut R) -> Result<Option<String>>
+where
+    R: BufRead,
+{
+    let is_tty = io::stdin().is_terminal();
+
+    match resolve_prompt_source(cli, is_tty) {
+        PromptSource::Argument(text) => Ok(Some(text)),
+        PromptSource::PlainRead => editor::read_plain_line(reader, is_tty).map(Some),
+        PromptSource::Editor { prefill } => {
+            let history = prompt_history::load();
+            match editor::compose(prefill.clone(), history)? {
+                Some(editor::EditorOutcome::Submitted(text)) => Ok(Some(text)),
+                Some(editor::EditorOutcome::Cancelled) => Ok(None),
+                // The terminal refused raw mode; fall back rather than fail.
+                None => editor::read_plain_line(reader, is_tty).map(Some),
+            }
+        }
+    }
 }
 
 fn confirm(
@@ -508,18 +543,8 @@ default_prompt:
         write_minimal_config(&config_root);
 
         let cli = Cli {
-            init: false,
-            create_prompt: None,
-            add_prompt: None,
-            list_tools: false,
             analyze: true,
-            confirm: false,
-            explain: false,
-            unsafe_mode: false,
-            peek: Vec::new(),
-            scope: None,
-            arg1: None,
-            prompt: None,
+            ..Default::default()
         };
 
         let generator = StubGenerator::new("echo hi", "analysis");
@@ -540,18 +565,9 @@ default_prompt:
         write_minimal_config(&config_root);
 
         let cli = Cli {
-            init: false,
-            create_prompt: None,
-            add_prompt: None,
-            list_tools: false,
-            analyze: false,
-            confirm: false,
             explain: true,
-            unsafe_mode: false,
-            peek: Vec::new(),
-            scope: None,
             arg1: Some("say hi".to_string()),
-            prompt: None,
+            ..Default::default()
         };
 
         let generator = StubGenerator::new("echo hello", "will echo hello");
@@ -563,5 +579,151 @@ default_prompt:
         assert_eq!(summary.notes.as_deref(), Some("cancelled"));
         assert!(summary.confirm);
         assert!(!executor.ran());
+    }
+
+    /// Run the same prompt through a given CLI shape and report the summary.
+    fn run_with(cli: Cli, input: &[u8]) -> (RunSummary, bool) {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+
+        let generator = StubGenerator::new("echo hello", "explanation");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(input.to_vec());
+        let summary = run_with_reader(cli, &generator, &executor, &mut reader).unwrap();
+        let ran = executor.ran();
+        (summary, ran)
+    }
+
+    #[test]
+    fn argument_and_piped_prompts_take_the_same_path() {
+        let (from_argument, argument_ran) = run_with(
+            Cli {
+                arg1: Some("say hi".to_string()),
+                ..Default::default()
+            },
+            b"",
+        );
+
+        // Same prompt, delivered on stdin instead of as an argument.
+        let (from_stdin, stdin_ran) = run_with(
+            Cli {
+                no_interactive: true,
+                ..Default::default()
+            },
+            b"say hi\n",
+        );
+
+        assert_eq!(from_argument.exit_code, from_stdin.exit_code);
+        assert_eq!(
+            from_argument.generated_command,
+            from_stdin.generated_command
+        );
+        assert_eq!(from_argument.confirm, from_stdin.confirm);
+        assert_eq!(from_argument.explain, from_stdin.explain);
+        assert_eq!(from_argument.notes, from_stdin.notes);
+        assert!(argument_ran && stdin_ran);
+    }
+
+    #[test]
+    fn a_submitted_prompt_is_recorded_in_prompt_history() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+
+        let cli = Cli {
+            arg1: Some("say hi".to_string()),
+            ..Default::default()
+        };
+        let generator = StubGenerator::new("echo hello", "explanation");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(Vec::<u8>::new());
+        run_with_reader(cli, &generator, &executor, &mut reader).unwrap();
+
+        assert_eq!(prompt_history::load(), vec!["say hi".to_string()]);
+    }
+
+    #[test]
+    fn explain_and_unsafe_still_apply_to_a_stdin_prompt() {
+        let (summary, ran) = run_with(
+            Cli {
+                no_interactive: true,
+                explain: true,
+                ..Default::default()
+            },
+            b"say hi\nn\n",
+        );
+
+        assert!(summary.explain, "explain must survive the input mode");
+        assert!(summary.confirm, "explain must still force confirmation");
+        assert_eq!(summary.notes.as_deref(), Some("cancelled"));
+        assert!(!ran, "declining the confirmation must not execute");
+    }
+
+    #[test]
+    fn unsafe_mode_still_forces_confirmation_for_a_stdin_prompt() {
+        let (summary, ran) = run_with(
+            Cli {
+                no_interactive: true,
+                unsafe_mode: true,
+                ..Default::default()
+            },
+            b"say hi\nn\n",
+        );
+
+        assert!(summary.confirm);
+        assert!(summary.unsafe_mode);
+        assert!(!ran);
+    }
+
+    #[test]
+    fn missing_prompt_outside_a_terminal_is_an_explicit_error() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+
+        let cli = Cli {
+            no_interactive: true,
+            ..Default::default()
+        };
+        let generator = StubGenerator::new("echo hello", "explanation");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(Vec::<u8>::new());
+        let err = run_with_reader(cli, &generator, &executor, &mut reader)
+            .expect_err("an absent prompt must fail loudly");
+
+        assert!(err.to_string().contains("No prompt provided"));
+        assert!(!executor.ran());
+    }
+
+    #[test]
+    fn prompt_config_flag_selects_the_per_call_config() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+
+        let cfg_path = temp.path().join("jq-prompt.yaml");
+        fs::write(
+            &cfg_path,
+            "tools:\n  - name: echo\n    config: \"echo tool from per-call config\"\n",
+        )
+        .unwrap();
+
+        let cli = Cli {
+            prompt_config: Some(cfg_path.to_string_lossy().to_string()),
+            arg1: Some("say hi".to_string()),
+            ..Default::default()
+        };
+        let generator = StubGenerator::new("echo hello", "explanation");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(Vec::<u8>::new());
+        let summary = run_with_reader(cli, &generator, &executor, &mut reader).unwrap();
+
+        assert_eq!(summary.exit_code, 0);
+        assert!(executor.ran());
     }
 }

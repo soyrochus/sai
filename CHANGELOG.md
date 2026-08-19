@@ -1,5 +1,34 @@
 # Releases/Changelog
 
+## Release v1.2.0 - Interactive Prompt Editor and Prompt History
+
+Sai-cli 1.2.0 makes composing a prompt an editable step rather than a one-shot
+shell argument, and remembers the prompts you have already written.
+
+Highlights:
+- Interactive mini editor for composing natural language prompts. Running `sai`
+  with no prompt in a terminal now opens it instead of erroring.
+- Persistent prompt history with Up/Down navigation and `Ctrl+R` reverse
+  search. Recalled prompts are editable before submission.
+- New flags: `--interactive` / `-i`, `--no-interactive`, and `--prompt-config`.
+- Full line editing in the prompt: cursor movement, Home/End, Delete,
+  `Ctrl+A`/`Ctrl+E`/`Ctrl+K`/`Ctrl+U`/`Ctrl+L`, Esc / `Ctrl+C` to cancel.
+- Prompt history is stored as NDJSON in `prompt_history.log` under the config
+  directory, rotating at 256 KB and created owner-readable only on Unix.
+
+Compatibility:
+- Passing a prompt as an argument is unchanged: it runs directly, never through
+  the editor. Piped and redirected input never opens the editor either.
+- **Behaviour change**: `sai` with no arguments no longer exits with clap's
+  "required argument" error. In a terminal it opens the editor; outside one it
+  exits non-zero with an explicit "No prompt provided" message.
+- No new dependencies; the editor is built on the `crossterm` crate already in
+  use.
+
+Tell the shell what you want, not how to do it.
+
+---
+
 ## Release v1.1.0 - Model/API Refresh and Explain Guardrails
 
 Sai-cli 1.1.0 updates OpenAI integration defaults and expands safety controls in prompt-driven workflows.

@@ -9,3 +9,10 @@ Log locations:
 Files rotate around 1 MB, keeping one backup. `--analyze` reads this log.
 You can inspect it directly for auditing or troubleshooting, and copy entries
 to share commands without re-running them.
+
+Prompt history is kept separately, as NDJSON, in the same directory:
+- prompt_history.log (rotates around 256 KB, keeping one backup)
+
+It records only the natural language prompts you submitted, with timestamps,
+and is what the interactive editor navigates with Up/Down and Ctrl+R. Delete
+the file to clear it. See `sai help interactive`.
