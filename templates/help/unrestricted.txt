@@ -1,0 +1,42 @@
+--unrestricted lifts the tool whitelist for a single call. The model may reach
+for any command-line tool, and may combine tools with pipes, redirection or
+chaining. In exchange, inspection becomes mandatory and cannot be turned off.
+
+Use it when the task genuinely needs a tool your config does not list, or a
+combination of tools. Prefer adding the tool to your prompt config when the
+need is recurring.
+
+    sai --unrestricted "show fn and struct from rust files changed today"
+
+What it lifts:
+- The tool whitelist, in generation as well as validation. The model is told it
+  is not restricted, so it can choose the right tool for the job.
+- Operator blocking, so pipes, redirects, chaining and substitution are allowed.
+- Execution runs through the shell, as it does under --unsafe.
+
+What it forces, and what nothing can suppress:
+- An explanation of the generated command, even without --explain.
+- A confirmation, even without --confirm.
+- The confirmation requires typing "yes" in full. A bare "y" clears every other
+  prompt in sai and deliberately does not clear this one.
+
+IMPORTANT - the explanation is not an independent check.
+It is written by the same model that produced the command, so a destructive
+command can receive a calm, plausible explanation. Forced explain buys you
+legibility, not verification.
+
+For that reason the confirmation also shows risk markers computed locally from
+the command text - shell operators, recursive or forced deletion, and wildcards
+reaching outside the working directory. No model is involved in producing them,
+which is what makes them worth reading. They are advisory: they inform your
+decision rather than blocking anything.
+
+Disabling the mode:
+Set the following in the global config to forbid it outright. sai then refuses
+before contacting the model, so a forbidden run costs nothing.
+
+    safety:
+      allow_unrestricted: false
+
+Unrestricted runs are recorded as such in the history log, so `sai --analyze`
+and later auditing can tell them apart.

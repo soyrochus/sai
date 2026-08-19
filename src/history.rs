@@ -14,6 +14,10 @@ pub struct HistoryEntry {
     pub exit_code: i32,
     pub generated_command: Option<String>,
     pub unsafe_mode: bool,
+    /// Whether this run lifted the tool whitelist. Defaulted so entries written
+    /// before the field existed still parse and read as not unrestricted.
+    #[serde(default)]
+    pub unrestricted: bool,
     pub confirm: bool,
     pub explain: bool,
     pub scope: Option<String>,
@@ -156,6 +160,7 @@ mod tests {
             exit_code: 0,
             generated_command: Some("echo hi".to_string()),
             unsafe_mode: false,
+            unrestricted: false,
             confirm: true,
             explain: false,
             scope: Some(".".to_string()),
@@ -182,6 +187,7 @@ mod tests {
             exit_code: 0,
             generated_command: Some("echo hi".to_string()),
             unsafe_mode: false,
+            unrestricted: false,
             confirm: true,
             explain: false,
             scope: None,
@@ -202,5 +208,49 @@ mod tests {
         write_entry(base_entry.clone()).unwrap();
         let latest = read_latest_entry().unwrap().unwrap();
         assert_eq!(latest.notes, base_entry.notes);
+    }
+
+    #[test]
+    fn an_entry_written_before_the_field_existed_still_parses() {
+        // Exactly the shape older builds wrote: no `unrestricted` key at all.
+        let legacy = r#"{"ts":"2024-01-01T00:00:00Z","cwd":"/tmp","argv":["sai"],"exit_code":0,"generated_command":"echo hi","unsafe_mode":false,"confirm":true,"explain":false,"scope":null,"peek_files":[],"notes":null}"#;
+
+        let entry: HistoryEntry = serde_json::from_str(legacy)
+            .expect("older history entries must remain readable");
+        assert!(!entry.unrestricted, "an absent field reads as not unrestricted");
+        assert_eq!(entry.generated_command.as_deref(), Some("echo hi"));
+    }
+
+    #[test]
+    fn unrestricted_runs_are_distinguishable_in_the_log() {
+        let temp = TempDir::new().unwrap();
+        let _guard = set_config_dir_override_for_tests(temp.path().join("config"));
+
+        let base = HistoryEntry {
+            ts: "2024-01-01T00:00:00Z".to_string(),
+            cwd: "/tmp".to_string(),
+            argv: vec!["sai".to_string()],
+            exit_code: 0,
+            generated_command: Some("ripgrep hi".to_string()),
+            unsafe_mode: true,
+            unrestricted: true,
+            confirm: true,
+            explain: true,
+            scope: None,
+            peek_files: Vec::new(),
+            notes: None,
+        };
+
+        write_entry(base.clone()).unwrap();
+        assert!(read_latest_entry().unwrap().unwrap().unrestricted);
+
+        let ordinary = HistoryEntry {
+            unrestricted: false,
+            unsafe_mode: false,
+            generated_command: Some("echo hi".to_string()),
+            ..base
+        };
+        write_entry(ordinary).unwrap();
+        assert!(!read_latest_entry().unwrap().unwrap().unrestricted);
     }
 }

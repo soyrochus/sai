@@ -6,6 +6,13 @@ Sai-cli 1.2.0 makes composing a prompt an editable step rather than a one-shot
 shell argument, and remembers the prompts you have already written.
 
 Highlights:
+- `--unrestricted` lifts the tool whitelist and operator blocking for a single
+  call, in generation as well as validation, and forces inspection in exchange:
+  the command is always explained, always confirmed, and the confirmation
+  requires typing `yes` in full. Because that explanation comes from the same
+  model that wrote the command, the confirmation also shows risk markers
+  computed locally from the command text. `safety.allow_unrestricted: false`
+  forbids the mode outright.
 - Interactive mini editor for composing natural language prompts. Running `sai`
   with no prompt in a terminal now opens it instead of erroring.
 - Persistent prompt history with Up/Down navigation and `Ctrl+R` reverse

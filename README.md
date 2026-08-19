@@ -28,6 +28,9 @@ Current release and toolchain:
 
 ## Changes in v1.2.0
 
+- Added `--unrestricted`, which lifts the tool whitelist and operator blocking
+  for one call while forcing an explanation and a typed `yes` confirmation.
+  Disable it entirely with `safety.allow_unrestricted: false`.
 - Added an **interactive mini editor** for composing prompts. Run `sai` with no
   prompt in a terminal and it opens an editable prompt line instead of failing
   with a missing-argument error.
@@ -220,6 +223,7 @@ The help system covers:
 - **peek** - Sample data for schema inference (--peek)
 - **safety** - Safety model, operator blocking, confirmation
 - **unsafe** - What --unsafe relaxes and when to use it
+- **unrestricted** - Lifting the tool whitelist with forced inspection
 - **explain** - Explain generated commands before running them
 - **analyze** - Analyze the last sai invocation
 - **interactive** - Mini editor, key bindings, prompt history
@@ -324,6 +328,50 @@ Allows pipes, redirects, etc.
 ```bash
 sai -u "Combine these two results and then sort"
 ```
+
+### **Unrestricted mode**
+
+`--unsafe` relaxes pipes and redirects but **keeps the tool whitelist**. When the
+task genuinely needs a tool your config does not list, `--unrestricted` lifts the
+whitelist too — in generation as well as validation, so the model is actually
+told it may choose freely:
+
+```bash
+sai --unrestricted "show fn and struct from rust files changed in the last 30 min"
+```
+
+In exchange, inspection becomes mandatory and nothing can suppress it: the command
+is always explained, always confirmed, and the confirmation requires typing `yes`
+in full. A bare `y` clears every other prompt in sai and deliberately does not
+clear this one.
+
+```
+Risk markers (computed locally, not by the model):
+  [shell operators] contains |
+  [destructive] rm — recursive and forced deletion
+
+UNRESTRICTED: no tool whitelist is in effect for this command.
+Type 'yes' to execute:
+```
+
+> **The explanation is not an independent check.** It is written by the same model
+> that produced the command, so a destructive command can receive a calm,
+> plausible explanation. That is why the confirmation also shows risk markers
+> computed locally from the command text — operators, recursive or forced
+> deletion, and wildcards reaching outside the working directory — with no model
+> involved. They are advisory, not a guarantee.
+
+To forbid the mode entirely, for example on a shared machine, add this to the
+global config. sai then refuses before contacting the model, so a forbidden run
+costs nothing:
+
+```yaml
+safety:
+  allow_unrestricted: false
+```
+
+Unrestricted runs are marked in the history log, so `--analyze` and later auditing
+can tell them apart.
 
 ### **With confirmation**
 

@@ -8,6 +8,7 @@ pub enum HelpTopic {
     Peek,
     Safety,
     Unsafe,
+    Unrestricted,
     Explain,
     Analyze,
     Interactive,
@@ -32,6 +33,7 @@ impl HelpTopic {
             "peek" => Some(Self::Peek),
             "safety" | "confirm" => Some(Self::Safety),
             "unsafe" => Some(Self::Unsafe),
+            "unrestricted" => Some(Self::Unrestricted),
             "explain" => Some(Self::Explain),
             "analyze" | "analyse" => Some(Self::Analyze),
             "interactive" | "editor" | "prompt-history" => Some(Self::Interactive),
@@ -54,6 +56,7 @@ impl HelpTopic {
             HelpTopic::Peek => "peek",
             HelpTopic::Safety => "safety",
             HelpTopic::Unsafe => "unsafe",
+            HelpTopic::Unrestricted => "unrestricted",
             HelpTopic::Explain => "explain",
             HelpTopic::Analyze => "analyze",
             HelpTopic::Interactive => "interactive",
@@ -75,6 +78,7 @@ impl HelpTopic {
             HelpTopic::Peek => "Sample data for schema inference (--peek)",
             HelpTopic::Safety => "Safety model, operator blocking, confirmation",
             HelpTopic::Unsafe => "What --unsafe relaxes and when to use it",
+            HelpTopic::Unrestricted => "Lifting the tool whitelist with forced inspection",
             HelpTopic::Explain => "Explain generated commands before running them",
             HelpTopic::Analyze => "Analyze the last sai invocation",
             HelpTopic::Interactive => "Mini editor, key bindings, prompt history",
@@ -96,6 +100,7 @@ impl HelpTopic {
             HelpTopic::Peek => PEEK_HELP,
             HelpTopic::Safety => SAFETY_HELP,
             HelpTopic::Unsafe => UNSAFE_HELP,
+            HelpTopic::Unrestricted => UNRESTRICTED_HELP,
             HelpTopic::Explain => EXPLAIN_HELP,
             HelpTopic::Analyze => ANALYZE_HELP,
             HelpTopic::Interactive => INTERACTIVE_HELP,
@@ -143,6 +148,10 @@ const TOPIC_ENTRIES: &[TopicEntry] = &[
         description: HelpTopic::Safety.short_description(),
     },
     TopicEntry {
+        topic: HelpTopic::Unrestricted,
+        description: HelpTopic::Unrestricted.short_description(),
+    },
+    TopicEntry {
         topic: HelpTopic::Explain,
         description: HelpTopic::Explain.short_description(),
     },
@@ -185,6 +194,7 @@ Common flags:
   -p, --peek <FILE>...    Send sample file(s) for schema inference
   -c, --confirm           Ask before executing the generated command
   -u, --unsafe            Allow pipes and redirects (always implies confirm)
+      --unrestricted      Lift the tool whitelist; forces explain + typed "yes"
   -e, --explain           Explain the generated command, then ask to confirm
   -i, --interactive       Compose the prompt in the mini editor
       --no-interactive    Never open the editor; read one line from stdin
@@ -285,6 +295,7 @@ const SCOPE_HELP: &str = include_str!("../templates/help/scope.txt");
 const PEEK_HELP: &str = include_str!("../templates/help/peek.txt");
 const SAFETY_HELP: &str = include_str!("../templates/help/safety.txt");
 const UNSAFE_HELP: &str = include_str!("../templates/help/unsafe.txt");
+const UNRESTRICTED_HELP: &str = include_str!("../templates/help/unrestricted.txt");
 const EXPLAIN_HELP: &str = include_str!("../templates/help/explain.txt");
 const ANALYZE_HELP: &str = include_str!("../templates/help/analyze.txt");
 const INTERACTIVE_HELP: &str = include_str!("../templates/help/interactive.txt");
@@ -364,6 +375,10 @@ mod tests {
             (
                 HelpTopic::Unsafe,
                 include_str!("../templates/help/unsafe.txt"),
+            ),
+            (
+                HelpTopic::Unrestricted,
+                include_str!("../templates/help/unrestricted.txt"),
             ),
             (
                 HelpTopic::Explain,

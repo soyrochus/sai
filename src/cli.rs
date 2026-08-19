@@ -60,6 +60,12 @@ pub struct Cli {
     #[arg(short = 'u', long = "unsafe")]
     pub unsafe_mode: bool,
 
+    /// Lift the tool whitelist and operator checks entirely for this call.
+    /// Always explains the command and requires typing "yes" to execute it.
+    /// Can be forbidden with `safety.allow_unrestricted: false` in the config.
+    #[arg(long = "unrestricted")]
+    pub unrestricted: bool,
+
     /// Sample data files to send to the LLM (truncated, for schema inference).
     /// Each file is read up to PEEK_MAX_BYTES and clearly marked as sample data.
     #[arg(short = 'p', long = "peek")]
@@ -308,5 +314,55 @@ mod tests {
     #[test]
     fn cli_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+}
+
+#[cfg(test)]
+mod unrestricted_tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    fn parse(args: &[&str]) -> Cli {
+        let mut argv = vec!["sai"];
+        argv.extend_from_slice(args);
+        Cli::parse_from(argv)
+    }
+
+    #[test]
+    fn unrestricted_parses_alone() {
+        let cli = parse(&["--unrestricted", "say hi"]);
+        assert!(cli.unrestricted);
+        assert!(!cli.unsafe_mode);
+    }
+
+    #[test]
+    fn unrestricted_composes_with_unsafe() {
+        let cli = parse(&["--unrestricted", "-u", "say hi"]);
+        assert!(cli.unrestricted && cli.unsafe_mode);
+    }
+
+    #[test]
+    fn unrestricted_composes_with_explain_and_confirm() {
+        let cli = parse(&["--unrestricted", "-e", "-c", "say hi"]);
+        assert!(cli.unrestricted && cli.explain && cli.confirm);
+    }
+
+    #[test]
+    fn unrestricted_composes_with_the_interactive_editor() {
+        let cli = parse(&["--unrestricted", "-i"]);
+        assert!(cli.unrestricted && cli.interactive);
+    }
+
+    #[test]
+    fn no_flag_can_suppress_inspection() {
+        // There is deliberately no --no-explain / --no-confirm to find.
+        let rendered = format!("{:?}", Cli::command().get_arguments().map(|a| a.get_id().as_str()).collect::<Vec<_>>());
+        for suppressor in ["no_explain", "no_confirm", "quiet", "yes"] {
+            assert!(
+                !rendered.contains(suppressor),
+                "a {} flag would let configuration suppress mandatory inspection",
+                suppressor
+            );
+        }
     }
 }

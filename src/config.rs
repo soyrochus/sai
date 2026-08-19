@@ -14,6 +14,28 @@ pub struct GlobalConfig {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_prompt: Option<PromptConfig>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub safety: Option<SafetySettings>,
+}
+
+/// Machine-level limits on which safety modes may be used at all.
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct SafetySettings {
+    /// Whether `--unrestricted` may be used. Absent means allowed, so existing
+    /// configurations keep working; only an explicit `false` forbids it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_unrestricted: Option<bool>,
+}
+
+impl GlobalConfig {
+    /// Whether unrestricted mode is permitted by this configuration.
+    pub fn allows_unrestricted(&self) -> bool {
+        self.safety
+            .as_ref()
+            .and_then(|s| s.allow_unrestricted)
+            .unwrap_or(true)
+    }
 }
 
 /// AI configuration that may come from file and/or environment.

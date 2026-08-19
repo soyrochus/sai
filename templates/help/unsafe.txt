@@ -4,3 +4,8 @@ before execution. Pair it with `--explain` when you want extra clarity.
 
 Use --unsafe when a single safe command is impossible; prefer explicit tools,
 scopes, and confirm/explain first.
+
+--unsafe does NOT lift the tool whitelist: the model is still confined to the
+tools in your config. When the task needs a tool that is not configured, that
+is --unrestricted, which lifts the whitelist as well and forces explanation and
+a typed "yes" in return. See `sai help unrestricted`.

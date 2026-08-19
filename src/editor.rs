@@ -469,14 +469,6 @@ const HELP_LINES: &[&str] = &[
     "  Send    Enter             Cancel  Esc / ^C",
 ];
 
-/// Tracks how tall the prompt area was last drawn, so a redraw can erase
-/// exactly what it wrote before — the area grows and shrinks as the help panel
-/// is toggled and as search mode comes and goes.
-#[derive(Default)]
-struct PromptArea {
-    rows: u16,
-}
-
 /// The prompt line itself, and the cursor column within it.
 fn prompt_line(state: &EditorState) -> (String, usize) {
     if state.is_searching() {
@@ -511,15 +503,17 @@ fn guide_lines(state: &EditorState) -> Vec<String> {
 }
 
 /// Draw the prompt area and park the terminal cursor on the prompt line.
-fn render(state: &EditorState, out: &mut impl Write, area: &mut PromptArea) -> io::Result<()> {
-    queue!(out, cursor::Hide)?;
-
-    // Climb back to the top of whatever was drawn last time, then wipe it.
-    if area.rows > 1 {
-        queue!(out, cursor::MoveUp(area.rows - 1))?;
-    }
+///
+/// Entered and left with the cursor on the prompt line — the top row of the
+/// area. That invariant is what makes this correct: clearing from the cursor
+/// down erases the whole area however tall it was, so no upward movement is
+/// needed on entry, and every descent made while drawing is undone before
+/// returning. A render must therefore have a net vertical displacement of zero;
+/// anything else walks the prompt off its anchor a row at a time.
+fn render(state: &EditorState, out: &mut impl Write) -> io::Result<()> {
     queue!(
         out,
+        cursor::Hide,
         cursor::MoveToColumn(0),
         terminal::Clear(ClearType::FromCursorDown)
     )?;
@@ -542,17 +536,14 @@ fn render(state: &EditorState, out: &mut impl Write, area: &mut PromptArea) -> i
     }
     queue!(out, cursor::MoveToColumn(column as u16), cursor::Show)?;
     out.flush()?;
-
-    area.rows = 1 + guides.len() as u16;
     Ok(())
 }
 
 /// Erase the prompt area on the way out, so the editor leaves no residue above
 /// whatever the caller prints next.
-fn clear_area(out: &mut impl Write, area: &PromptArea) -> io::Result<()> {
-    if area.rows > 1 {
-        queue!(out, cursor::MoveUp(area.rows - 1))?;
-    }
+fn clear_area(out: &mut impl Write) -> io::Result<()> {
+    // Also entered with the cursor on the prompt line, so clearing downward is
+    // enough; climbing first would take the line above the editor with it.
     queue!(
         out,
         cursor::MoveToColumn(0),
@@ -580,11 +571,10 @@ pub fn compose(prefill: Option<String>, history: Vec<String>) -> Result<Option<E
 
     let mut state = EditorState::new(prefill, history);
     let mut out = io::stderr();
-    let mut area = PromptArea::default();
-    let outcome = run_loop(&mut state, &mut out, &mut area, || {
+    let outcome = run_loop(&mut state, &mut out, || {
         event::read().context("Failed to read a key event from the terminal")
     });
-    let _ = clear_area(&mut out, &area);
+    let _ = clear_area(&mut out);
     drop(guard);
     outcome.map(Some)
 }
@@ -594,20 +584,19 @@ pub fn compose(prefill: Option<String>, history: Vec<String>) -> Result<Option<E
 fn run_loop<E>(
     state: &mut EditorState,
     out: &mut impl Write,
-    area: &mut PromptArea,
     mut next_event: E,
 ) -> Result<EditorOutcome>
 where
     E: FnMut() -> Result<Event>,
 {
-    render(state, out, area)?;
+    render(state, out)?;
 
     loop {
         let event = next_event()?;
 
         let Event::Key(key) = event else {
             // Resizes and mouse events just need a redraw.
-            render(state, out, area)?;
+            render(state, out)?;
             continue;
         };
 
@@ -617,12 +606,10 @@ where
         }
 
         match state.apply(key) {
-            EditorAction::Continue => render(state, out, area)?,
+            EditorAction::Continue => render(state, out)?,
             EditorAction::Redraw => {
                 queue!(out, terminal::Clear(ClearType::All), cursor::MoveTo(0, 0))?;
-                // The wipe took the old area with it; nothing to climb back over.
-                area.rows = 1;
-                render(state, out, area)?;
+                render(state, out)?;
             }
             EditorAction::Finish(outcome) => return Ok(outcome),
         }
@@ -917,9 +904,8 @@ mod tests {
             history.iter().map(|s| s.to_string()).collect(),
         );
         let mut out = Vec::new();
-        let mut area = PromptArea::default();
         let mut keys = keys.into_iter();
-        run_loop(&mut state, &mut out, &mut area, || {
+        run_loop(&mut state, &mut out, || {
             keys.next()
                 .map(Event::Key)
                 .ok_or_else(|| anyhow!("ran out of scripted key events"))
@@ -1236,33 +1222,117 @@ mod tests {
         }
     }
 
+    /// Net rows the cursor moves over one render: `\r\n` descends one row,
+    /// `CSI n A` climbs n. A render must end where it began.
+    fn net_vertical_displacement(bytes: &[u8]) -> i32 {
+        let text = String::from_utf8_lossy(bytes);
+        let down = text.matches("\r\n").count() as i32;
+        let up: i32 = regex_free_move_ups(&text);
+        down - up
+    }
+
+    /// Sum the `n` of every `CSI n A` (cursor-up) in the stream.
+    fn regex_free_move_ups(text: &str) -> i32 {
+        let mut total = 0;
+        let mut rest = text;
+        while let Some(i) = rest.find("\u{1b}[") {
+            let after = &rest[i + 2..];
+            let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+            let tail = &after[digits.len()..];
+            if tail.starts_with('A') {
+                total += digits.parse::<i32>().unwrap_or(1);
+            }
+            rest = after;
+        }
+        total
+    }
+
     #[test]
-    fn rendering_tracks_how_tall_the_prompt_area_is() {
+    fn a_render_returns_the_cursor_to_the_row_it_started_on() {
+        // The regression that ate a line of scrollback per keystroke: render
+        // climbed on entry for a descent it had already undone, leaving a net
+        // displacement of -1 and walking the prompt up the screen.
         let mut state = EditorState::new(None, Vec::new());
+
         let mut out = Vec::new();
-        let mut area = PromptArea::default();
+        render(&state, &mut out).unwrap();
+        assert_eq!(
+            net_vertical_displacement(&out),
+            0,
+            "a plain render must leave the cursor on its starting row"
+        );
 
-        // Prompt plus the hint line.
-        render(&state, &mut out, &mut area).unwrap();
-        assert_eq!(area.rows, 2);
-
-        // Prompt, the help panel, then the hint line.
+        // With the help panel open the area is several rows tall; the descent
+        // is larger but must still be fully undone.
         state.apply(ctrl('g'));
-        render(&state, &mut out, &mut area).unwrap();
-        assert_eq!(area.rows, 2 + HELP_LINES.len() as u16);
+        let mut out = Vec::new();
+        render(&state, &mut out).unwrap();
+        assert_eq!(
+            net_vertical_displacement(&out),
+            0,
+            "an expanded prompt area must still return to its starting row"
+        );
 
-        // Closing the panel shrinks the area back.
+        // And in search mode.
         state.apply(ctrl('g'));
-        render(&state, &mut out, &mut area).unwrap();
-        assert_eq!(area.rows, 2);
+        state.apply(ctrl('r'));
+        let mut out = Vec::new();
+        render(&state, &mut out).unwrap();
+        assert_eq!(net_vertical_displacement(&out), 0, "search mode too");
+    }
+
+    #[test]
+    fn repeated_renders_do_not_drift_up_the_screen() {
+        // Typing is a render per keystroke; drift accumulates one row each.
+        let mut state = EditorState::new(None, Vec::new());
+        let mut total = 0;
+        for ch in "find large files".chars() {
+            state.apply(key(KeyCode::Char(ch)));
+            let mut out = Vec::new();
+            render(&state, &mut out).unwrap();
+            total += net_vertical_displacement(&out);
+        }
+        assert_eq!(
+            total, 0,
+            "16 keystrokes drifted {} rows; the prompt must stay anchored",
+            total
+        );
+    }
+
+    #[test]
+    fn clearing_the_area_on_exit_does_not_climb_above_the_prompt() {
+        // clear_area runs with the cursor on the prompt line, so any upward
+        // movement would erase the line above the editor.
+        let mut out = Vec::new();
+        clear_area(&mut out).unwrap();
+        assert_eq!(
+            regex_free_move_ups(&String::from_utf8_lossy(&out)),
+            0,
+            "exit cleanup must not move up"
+        );
+    }
+
+    #[test]
+    fn a_render_clears_from_the_cursor_down() {
+        // What makes the entry climb unnecessary: the downward wipe removes the
+        // whole area, so a shrinking area needs no height bookkeeping.
+        let state = EditorState::new(None, Vec::new());
+        let mut out = Vec::new();
+        render(&state, &mut out).unwrap();
+        let text = String::from_utf8_lossy(&out);
+        // crossterm emits ED with the default parameter omitted.
+        assert!(
+            text.contains("\u{1b}[J") || text.contains("\u{1b}[0J"),
+            "expected clear-from-cursor-down, got {:?}",
+            text
+        );
     }
 
     #[test]
     fn rendering_draws_the_prompt_and_the_hint() {
         let state = editor("find large files");
         let mut out = Vec::new();
-        let mut area = PromptArea::default();
-        render(&state, &mut out, &mut area).unwrap();
+        render(&state, &mut out).unwrap();
 
         let drawn = String::from_utf8(out).unwrap();
         assert!(drawn.contains("sai> find large files"));

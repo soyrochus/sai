@@ -11,7 +11,8 @@ use crate::editor;
 use crate::peek::build_peek_context;
 use crate::prompt_history;
 use crate::prompt::build_system_prompt;
-use crate::safety::validate_and_split_command;
+use crate::safety::{risk_markers, validate_and_split_command};
+use crate::safety_mode::SafetyMode;
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use std::env;
@@ -23,6 +24,7 @@ pub struct RunSummary {
     pub exit_code: i32,
     pub generated_command: Option<String>,
     pub unsafe_mode: bool,
+    pub unrestricted: bool,
     pub confirm: bool,
     pub explain: bool,
     pub scope: Option<String>,
@@ -35,7 +37,8 @@ impl RunSummary {
         Self {
             exit_code: 0,
             generated_command: None,
-            unsafe_mode: cli.unsafe_mode,
+            unsafe_mode: SafetyMode::from_cli(cli).is_unsafe_for_history(),
+            unrestricted: cli.unrestricted,
             confirm: cli.confirm || cli.unsafe_mode || cli.explain,
             explain: cli.explain,
             scope: cli.scope.clone(),
@@ -49,6 +52,7 @@ impl RunSummary {
             exit_code: 0,
             generated_command: None,
             unsafe_mode: false,
+            unrestricted: false,
             confirm: false,
             explain: false,
             scope: None,
@@ -119,12 +123,13 @@ where
         }
     }
 
-    let (confirm, explain, unsafe_mode, scope, peek_files, generated_command) =
+    let (confirm, explain, unsafe_mode, unrestricted, scope, peek_files, generated_command) =
         if let Some(ref s) = summary {
             (
                 s.confirm,
                 s.explain,
                 s.unsafe_mode,
+                s.unrestricted,
                 s.scope.clone(),
                 s.peek_files.clone(),
                 s.generated_command.clone(),
@@ -133,7 +138,8 @@ where
             (
                 cli.confirm || cli.unsafe_mode || cli.explain,
                 cli.explain,
-                cli.unsafe_mode,
+                SafetyMode::from_cli(&cli).is_unsafe_for_history(),
+                cli.unrestricted,
                 cli.scope.clone(),
                 cli.peek.clone(),
                 None,
@@ -147,6 +153,7 @@ where
         exit_code,
         generated_command,
         unsafe_mode,
+        unrestricted,
         confirm,
         explain,
         scope,
@@ -215,6 +222,17 @@ where
 
     let global_cfg = load_global_config(&global_config_path)?;
 
+    let safety_mode = SafetyMode::from_cli(&cli);
+
+    // Refuse a forbidden mode before contacting the model, so a run that was
+    // never permitted costs no tokens and records no command.
+    if safety_mode.is_unrestricted() && !global_cfg.allows_unrestricted() {
+        return Err(anyhow!(
+            "Unrestricted mode is disabled by {}. Remove 'safety.allow_unrestricted: false' from that file to enable it.",
+            global_config_path.display()
+        ));
+    }
+
     if cli.analyze {
         return run_analyze(&global_cfg, generator);
     }
@@ -247,7 +265,7 @@ where
 
     prompt_history::record(&nl_prompt);
 
-    let (system_prompt, allowed_tools) = build_system_prompt(&prompt_cfg)?;
+    let (system_prompt, allowed_tools) = build_system_prompt(&prompt_cfg, safety_mode)?;
     let peek_context = build_peek_context(&cli.peek)?;
     let effective_ai = resolve_ai_config(global_cfg.ai)?;
 
@@ -263,12 +281,16 @@ where
 
     eprintln!(">> {}", cmd_line);
 
-    let tokens = validate_and_split_command(&cmd_line, &allowed_tools, cli.unsafe_mode)?;
+    let tokens = validate_and_split_command(&cmd_line, &allowed_tools, safety_mode)?;
 
     // Check if the generated command uses a tool that requires forced explain mode
     let tool_requires_explain = crate::prompt::should_force_explain(&prompt_cfg.tools, &cmd_line);
-    let effective_explain = cli.explain || tool_requires_explain;
-    let effective_confirm = cli.confirm || cli.unsafe_mode || effective_explain;
+    // Under an unrestricted run these are true unconditionally: no flag, config
+    // value or per-tool setting is consulted, so nothing can suppress them.
+    let effective_explain =
+        safety_mode.forces_inspection() || cli.explain || tool_requires_explain;
+    let effective_confirm =
+        safety_mode.forces_inspection() || cli.confirm || cli.unsafe_mode || effective_explain;
 
     let mut summary = RunSummary::from_cli(&cli);
     summary.generated_command = Some(cmd_line.clone());
@@ -284,8 +306,10 @@ where
         print_command_explanation(generator, &effective_ai, &cmd_line)?;
     }
 
-    if effective_confirm
-        && !confirm(
+    let confirmed = if !effective_confirm {
+        true
+    } else if safety_mode.is_unrestricted() {
+        confirm_unrestricted(
             reader,
             &global_config_path,
             prompt_source.as_deref(),
@@ -293,14 +317,25 @@ where
             cli.scope.as_deref(),
             &cmd_line,
         )?
-    {
+    } else {
+        confirm(
+            reader,
+            &global_config_path,
+            prompt_source.as_deref(),
+            &nl_prompt,
+            cli.scope.as_deref(),
+            &cmd_line,
+        )?
+    };
+
+    if !confirmed {
         eprintln!("Cancelled.");
         summary.exit_code = 0;
         summary.notes = Some("cancelled".to_string());
         return Ok(summary);
     }
 
-    let status = executor.execute(&cmd_line, &tokens, cli.unsafe_mode)?;
+    let status = executor.execute(&cmd_line, &tokens, safety_mode.uses_shell())?;
     summary.exit_code = status;
     Ok(summary)
 }
@@ -331,14 +366,22 @@ where
     }
 }
 
-fn confirm(
-    reader: &mut dyn BufRead,
+/// Read one line of answer from `reader`.
+fn read_answer(reader: &mut dyn BufRead) -> Result<String> {
+    io::stdout().flush().ok();
+    let mut buf = String::new();
+    reader.read_line(&mut buf)?;
+    Ok(buf.trim().to_lowercase())
+}
+
+/// Print the shared header both confirmations show.
+fn print_confirm_context(
     global_cfg_path: &Path,
     prompt_cfg_path: Option<&Path>,
     nl_prompt: &str,
     scope_hint: Option<&str>,
     cmd_line: &str,
-) -> Result<bool> {
+) {
     eprintln!("Global config file: {}", global_cfg_path.display());
     if let Some(p) = prompt_cfg_path {
         eprintln!("Prompt config file: {}", p.display());
@@ -357,12 +400,64 @@ fn confirm(
     eprintln!("LLM output (command):");
     eprintln!("  {}", cmd_line);
     eprintln!();
+}
+
+/// The confirmation shown under `--unrestricted`.
+///
+/// Requires the full word `yes`. A bare `y` clears every other prompt in SAI
+/// and deliberately does not clear this one: this is the mode where a wrong
+/// command is unbounded, so muscle memory should not be enough.
+fn confirm_unrestricted(
+    reader: &mut dyn BufRead,
+    global_cfg_path: &Path,
+    prompt_cfg_path: Option<&Path>,
+    nl_prompt: &str,
+    scope_hint: Option<&str>,
+    cmd_line: &str,
+) -> Result<bool> {
+    print_confirm_context(
+        global_cfg_path,
+        prompt_cfg_path,
+        nl_prompt,
+        scope_hint,
+        cmd_line,
+    );
+
+    // Locally computed, unlike the explanation above, which came from the same
+    // model that wrote the command.
+    let markers = risk_markers(cmd_line);
+    if !markers.is_empty() {
+        eprintln!("Risk markers (computed locally, not by the model):");
+        for marker in &markers {
+            eprintln!("  [{}] {}", marker.kind.label(), marker.detail);
+        }
+        eprintln!();
+    }
+
+    eprintln!("UNRESTRICTED: no tool whitelist is in effect for this command.");
+    eprint!("Type 'yes' to execute: ");
+
+    Ok(read_answer(reader)? == "yes")
+}
+
+fn confirm(
+    reader: &mut dyn BufRead,
+    global_cfg_path: &Path,
+    prompt_cfg_path: Option<&Path>,
+    nl_prompt: &str,
+    scope_hint: Option<&str>,
+    cmd_line: &str,
+) -> Result<bool> {
+    print_confirm_context(
+        global_cfg_path,
+        prompt_cfg_path,
+        nl_prompt,
+        scope_hint,
+        cmd_line,
+    );
 
     eprint!("Execute this command? [y/N] ");
-    io::stdout().flush().ok();
-    let mut buf = String::new();
-    reader.read_line(&mut buf)?;
-    let ans = buf.trim().to_lowercase();
+    let ans = read_answer(reader)?;
     Ok(ans == "y" || ans == "yes")
 }
 
@@ -725,5 +820,217 @@ default_prompt:
 
         assert_eq!(summary.exit_code, 0);
         assert!(executor.ran());
+    }
+
+    // --- unrestricted mode: configuration gate ------------------------------
+
+    /// A generator that fails loudly if anything asks it for a command, so a
+    /// test can prove the model was never contacted.
+    struct NeverCalledGenerator;
+
+    impl CommandGenerator for NeverCalledGenerator {
+        fn generate(
+            &self,
+            _ai: &crate::config::EffectiveAiConfig,
+            _system_prompt: &str,
+            _nl_prompt: &str,
+            _scope_hint: Option<&str>,
+            _peek_text: Option<&str>,
+        ) -> Result<String> {
+            panic!("the model must not be contacted when the mode is forbidden");
+        }
+    }
+
+    impl ChatClient for NeverCalledGenerator {
+        fn respond(
+            &self,
+            _ai: &crate::config::EffectiveAiConfig,
+            _system_prompt: &str,
+            _user_prompt: &str,
+            _temperature: f32,
+        ) -> Result<String> {
+            panic!("the model must not be contacted when the mode is forbidden");
+        }
+    }
+
+    fn write_config_forbidding_unrestricted(dir: &Path) {
+        fs::create_dir_all(dir).unwrap();
+        let cfg = r#"
+ai:
+  provider: openai
+  openai_api_key: test-key
+  openai_model: test-model
+safety:
+  allow_unrestricted: false
+default_prompt:
+  tools:
+    - name: echo
+      config: "echo tool"
+"#;
+        fs::write(dir.join("config.yaml"), cfg).unwrap();
+    }
+
+    #[test]
+    fn forbidden_unrestricted_mode_fails_and_names_the_config_file() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_config_forbidding_unrestricted(&config_root);
+
+        let cli = Cli {
+            unrestricted: true,
+            arg1: Some("say hi".to_string()),
+            ..Default::default()
+        };
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(Vec::<u8>::new());
+        let err = run_with_reader(cli, &NeverCalledGenerator, &executor, &mut reader)
+            .expect_err("a forbidden mode must fail");
+
+        let msg = err.to_string();
+        assert!(msg.contains("Unrestricted mode is disabled"));
+        assert!(
+            msg.contains(&config_root.join("config.yaml").display().to_string()),
+            "the error should name the config file that forbade it: {}",
+            msg
+        );
+        assert!(!executor.ran());
+    }
+
+    #[test]
+    fn forbidding_the_mode_does_not_affect_ordinary_invocations() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_config_forbidding_unrestricted(&config_root);
+
+        let cli = Cli {
+            arg1: Some("say hi".to_string()),
+            ..Default::default()
+        };
+        let generator = StubGenerator::new("echo hello", "explanation");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(Vec::<u8>::new());
+        let summary = run_with_reader(cli, &generator, &executor, &mut reader).unwrap();
+
+        assert_eq!(summary.exit_code, 0);
+        assert!(executor.ran());
+    }
+
+    #[test]
+    fn an_absent_setting_allows_unrestricted_mode() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        // write_minimal_config has no `safety:` section at all.
+        write_minimal_config(&config_root);
+
+        let cli = Cli {
+            unrestricted: true,
+            arg1: Some("say hi".to_string()),
+            ..Default::default()
+        };
+        let generator = StubGenerator::new("echo hello", "explanation");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(b"yes\n".to_vec());
+        let summary = run_with_reader(cli, &generator, &executor, &mut reader).unwrap();
+
+        assert_eq!(summary.exit_code, 0);
+        assert!(executor.ran());
+    }
+
+    // --- unrestricted mode: mandatory inspection ----------------------------
+
+    /// Run an unrestricted invocation with `input` as the confirmation answer.
+    fn run_unrestricted(input: &[u8]) -> (RunSummary, bool) {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+
+        let cli = Cli {
+            unrestricted: true,
+            arg1: Some("say hi".to_string()),
+            ..Default::default()
+        };
+        // A tool that is deliberately not in the config.
+        let generator = StubGenerator::new("ripgrep hello", "it searches for hello");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(input.to_vec());
+        let summary = run_with_reader(cli, &generator, &executor, &mut reader).unwrap();
+        let ran = executor.ran();
+        (summary, ran)
+    }
+
+    #[test]
+    fn typing_yes_executes() {
+        let (summary, ran) = run_unrestricted(b"yes\n");
+        assert!(ran, "'yes' must execute the command");
+        assert_eq!(summary.exit_code, 0);
+    }
+
+    #[test]
+    fn a_bare_y_does_not_execute() {
+        let (summary, ran) = run_unrestricted(b"y\n");
+        assert!(!ran, "a bare 'y' must not clear the unrestricted confirmation");
+        assert_eq!(summary.notes.as_deref(), Some("cancelled"));
+        assert_eq!(summary.exit_code, 0);
+    }
+
+    #[test]
+    fn other_answers_do_not_execute() {
+        for answer in [&b"n\n"[..], &b"\n"[..], &b"yep\n"[..], &b"YES please\n"[..], &b""[..]] {
+            let (_, ran) = run_unrestricted(answer);
+            assert!(!ran, "answer {:?} must not execute", answer);
+        }
+    }
+
+    #[test]
+    fn the_affirmative_is_case_insensitive() {
+        for answer in [&b"YES\n"[..], &b"Yes\n"[..]] {
+            let (_, ran) = run_unrestricted(answer);
+            assert!(ran, "answer {:?} should execute", answer);
+        }
+    }
+
+    #[test]
+    fn an_unconfigured_tool_runs_under_unrestricted() {
+        // The whole point: `ripgrep` is not in the config and is not rejected.
+        let (summary, ran) = run_unrestricted(b"yes\n");
+        assert_eq!(summary.generated_command.as_deref(), Some("ripgrep hello"));
+        assert!(ran);
+    }
+
+    #[test]
+    fn inspection_happens_without_explain_or_confirm_flags() {
+        let (summary, _) = run_unrestricted(b"yes\n");
+        assert!(
+            summary.explain,
+            "explanation must be forced even without --explain"
+        );
+        assert!(
+            summary.confirm,
+            "confirmation must be forced even without --confirm"
+        );
+    }
+
+    #[test]
+    fn ordinary_confirmations_still_accept_a_bare_y() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+
+        let cli = Cli {
+            confirm: true,
+            arg1: Some("say hi".to_string()),
+            ..Default::default()
+        };
+        let generator = StubGenerator::new("echo hello", "explanation");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(b"y\n".to_vec());
+        run_with_reader(cli, &generator, &executor, &mut reader).unwrap();
+
+        assert!(executor.ran(), "a bare 'y' must still clear an ordinary confirmation");
     }
 }
