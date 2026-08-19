@@ -69,8 +69,18 @@ pub struct Cli {
     #[arg(short = 's', long = "scope", value_name = "PATTERN")]
     pub scope: Option<String>,
 
-    /// Either a per-call prompt config YAML file, or the natural language prompt (simple mode)
-    #[arg(required_unless_present_any = ["init", "create_prompt", "add_prompt", "list_tools", "analyze"])]
+    /// Compose the prompt in the interactive mini editor, even when a prompt
+    /// argument is present (the argument becomes the editor's starting text).
+    #[arg(short = 'i', long = "interactive", conflicts_with = "no_interactive")]
+    pub interactive: bool,
+
+    /// Never open the interactive mini editor; read a single line of prompt
+    /// text from standard input instead (legacy behaviour).
+    #[arg(long = "no-interactive")]
+    pub no_interactive: bool,
+
+    /// Either a per-call prompt config YAML file, or the natural language prompt (simple mode).
+    /// Optional: when omitted in a terminal, the prompt is composed in the interactive editor.
     pub arg1: Option<String>,
 
     /// Natural language prompt (advanced mode, when arg1 is a config file)
