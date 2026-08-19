@@ -17,7 +17,26 @@
 
 It is designed for Unix-like environments like Linux and MacOS but builds cleanly on Windows as well.
 
+Current release and toolchain:
+
+- Version: 1.1.0
+- Rust edition: 2024
+
 ![sai-logo](images/sai-logo-smallest.png)
+
+---
+
+## Changes in v1.1.0
+
+- Updated OpenAI model and API integration behavior to align with latest configuration defaults and request handling.
+- Updated API access and model defaults (including gpt-5.2-mini transition work).
+- Added `force_explain` support in prompt/config tool definitions, allowing selected tools to automatically require explain-mode before execution.
+
+Reference commits:
+
+- 6ae63fe4e8572320a9b38e30330b800a058ea55d - Updated model and API use
+- e9454ffd4ff18641457821e5f2bef8b0d0d6abd4 - updaed api access and model (gpt-5.2-mini)
+- ea7ebf45f124b6c6439482a126804a0fea799059 - Implemented 'foce-explain' parameter in prompt/config files
 
 ---
 
@@ -126,9 +145,9 @@ ai:
   provider: openai
   openai_api_key: "replace_with_your_key"
   openai_api_mode: "responses"
-  openai_model: "gpt-5.4-mini"
+  openai_model: "gpt-5.6-luna"
   # Optional: pin a dated snapshot instead of the alias above
-  # openai_model_snapshot: "gpt-5.4-mini-2026-03-17"
+  # openai_model_snapshot: "gpt-5.6-luna-YYYY-MM-DD"
   # Optional: low | medium | high
   # openai_reasoning_effort: "medium"
 

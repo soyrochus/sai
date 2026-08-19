@@ -1,5 +1,24 @@
 # Releases/Changelog
 
+## Release v1.1.0 - Model/API Refresh and Explain Guardrails
+
+Sai-cli 1.1.0 updates OpenAI integration defaults and expands safety controls in prompt-driven workflows.
+
+Highlights:
+- Crate version bumped to 1.1.0.
+- Rust edition bumped to 2024.
+- Updated model and API usage in current branch work.
+- Added force-explain capability in prompt/config tool definitions.
+
+What's Changed:
+- Updated model and API use (commit 6ae63fe4e8572320a9b38e30330b800a058ea55d).
+- Updated API access and model (gpt-5.2-mini) (commit e9454ffd4ff18641457821e5f2bef8b0d0d6abd4).
+- Implemented 'foce-explain' parameter in prompt/config files (commit ea7ebf45f124b6c6439482a126804a0fea799059).
+
+Tell the shell what you want, not how to do it.
+
+---
+
 ## Release v1.0.0 – First Stable Sai-cli
 
 Sai-cli reaches its first stable, full release with improved onboarding, clearer
