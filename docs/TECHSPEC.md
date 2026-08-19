@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD025 MD040 MD004 MD022 MD031 MD032 MD046 -->
 
 # SAI Technical Specification
-**Version 1.0**  
+**Version 1.1**  
 **MIT Licensed**
 
 This document describes the design, architecture, and safety model of **SAI**, the natural-language–to–shell-command generator.
@@ -95,8 +95,8 @@ Defines:
 ### Initialization helper
 
 Running `sai --init` writes a starter `config.yaml` at the OS location above.  
-The generated file contains placeholder API credentials (e.g., `changeme`) and **no tools**.  
-Operators add tools later (for example via `sai --add-prompt`) so the whitelist always reflects locally installed binaries. Existing configs are never overwritten.
+The generated file contains placeholder API credentials (e.g., `changeme`) and a curated default tool whitelist sourced from `templates/default-config.yaml` (for example: `rg`, `grep`, `find`, `awk`, `sed`, `wc`).  
+Operators can extend or adjust these defaults with `sai --add-prompt` or direct YAML edits. Existing configs are never overwritten.
 
 ## 3.2 Per-call Prompt Config
 

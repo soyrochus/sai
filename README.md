@@ -519,6 +519,6 @@ This project follows the [FOSS Pluralism Manifesto](./FOSS_PLURALISM_MANIFESTO.m
 
 ## License and Copyright
 
-Copyright (c) 2025, Iwan van der Kleijn
+Copyright (c) 2025, 2026 Iwan van der Kleijn
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
