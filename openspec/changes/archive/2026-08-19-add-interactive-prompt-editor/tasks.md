@@ -59,3 +59,17 @@
 - [x] 7.4 Update [src/help.rs](src/help.rs) with `--interactive` and `--no-interactive`, and describe the default editor behavior in the usage text.
 - [x] 7.5 Update [README.md](README.md) with the editor, its key bindings, and the prompt-history file location and how to clear it.
 - [x] 7.6 Add the v1.2.0 entry to [CHANGELOG.md](CHANGELOG.md), noting that a bare `sai` no longer produces clap's required-argument error.
+
+## 8. On-screen help and submit-key semantics
+
+Added after hands-on review: the editor taught none of its own bindings, and
+Enter-to-submit had to be reconciled with multi-line composition before SPEC-03.
+
+- [x] 8.1 Add a `show_help` toggle to `EditorState`, bound to `Ctrl+G`, that leaves the buffer, cursor, and any active search untouched.
+- [x] 8.2 Add a mode-aware hint line naming submit, cancel, history, search, and the key panel, phrased for composing vs reverse search.
+- [x] 8.3 Add the expanded key panel listing every implemented binding, and assert in a test that it stays in step with what the editor implements.
+- [x] 8.4 Rewrite rendering for a multi-row prompt area: track rows drawn, clear exactly that many, and draw guidance dimmed so it stays subordinate to the prompt.
+- [x] 8.5 Erase the prompt area when the editor exits, so nothing is left above what the caller prints next.
+- [x] 8.6 Reserve `Alt+Enter` — swallow it rather than submitting — so SPEC-03 can make it insert a line break without retraining users.
+- [x] 8.7 Unit-test the toggle, the mode-aware hint, panel coverage, prompt-area row tracking, and that `Alt+Enter` does not submit while Enter still does.
+- [x] 8.8 Update the `interactive` help topic and README with `Ctrl+G` and the submit/cancel keys.

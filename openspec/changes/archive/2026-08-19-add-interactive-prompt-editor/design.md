@@ -21,7 +21,7 @@ The constraints that shape this design come from the existing code:
 
 **Non-Goals:**
 
-- Multi-line composition. The buffer is deliberately single-line; SPEC-03 will extend it and this design keeps the buffer type able to grow into that.
+- Multi-line composition. The buffer is deliberately single-line; SPEC-03 will extend it. This design keeps the buffer type able to grow into that and reserves `Alt+Enter` for it, but implements no line breaks.
 - Rendering beyond one prompt line plus an optional search-status line. No panes, no full-screen alternate buffer.
 - Any change to `history.log`, `--analyze`, or the `RunSummary` shape.
 
@@ -67,6 +67,38 @@ Today `sai foo.yaml` (a single argument) means "simple mode, prompt text is `foo
 Rationale: it removes the ambiguity without positional guessing, and the flag is independently useful — it makes advanced mode explicit instead of relying on argument count. When `--prompt-config` is given, `arg1` is always the natural-language prompt, never a config path.
 
 Alternatives considered: (a) sniff whether `arg1` names an existing `.yaml`/`.yml` file — rejected, since a file named `notes.yaml` in the working directory would silently change what a prompt means, and the failure would be confusing; (b) make a lone argument under `--interactive` always a config path — rejected, it removes prefill, which is the more common of the two uses.
+
+### Enter submits, and the editor states its own keys
+
+The editor is modal enough that its bindings are not guessable, and the original
+design said nothing about teaching them. Two things follow.
+
+First, a persistent dim hint line sits under the prompt naming submit, cancel,
+history and search, and `Ctrl+G` toggles a panel listing every binding. Guidance
+is rendered subordinate (dark grey) so it never competes with the prompt, and the
+prompt area is erased on exit so nothing is left behind.
+
+Second, the submit key is settled now rather than when multi-line lands.
+**Enter submits; `Alt+Enter` is reserved for inserting a line break** in SPEC-03.
+`Alt+Enter` is swallowed today rather than submitting, so the key never teaches
+the wrong meaning to anyone who finds it early.
+
+Rationale: Enter-to-send matches the current single-line behaviour and chat-style
+input generally, so nothing users already learned changes when multi-line arrives.
+`Shift+Enter`, the obvious alternative, is **not usable**: standard terminals send
+an identical `\r` for Enter and Shift+Enter, and only terminals implementing the
+kitty keyboard protocol distinguish them. `Alt+Enter` arrives as `ESC`+`\r` and is
+reported distinctly by crossterm across macOS, Linux and Windows.
+
+Alternatives considered: (a) Enter inserts a newline with `Ctrl+D` to submit —
+rejected, it breaks the established Enter-to-send habit and `Ctrl+D` already means
+EOF in a shell context; (b) shell-style trailing-backslash continuation — rejected,
+it is a typing convention rather than a discoverable key, and it makes a literal
+trailing backslash impossible to type.
+
+Because the prompt area is now multiple lines tall, rendering tracks how many rows
+it last drew and clears exactly that many, so the area can grow and shrink as the
+panel and search mode come and go.
 
 ### Prompt history mirrors `history.rs` rather than extending it
 

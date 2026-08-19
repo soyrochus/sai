@@ -8,6 +8,7 @@
 
 use anyhow::{anyhow, Context, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::style::{Color, ResetColor, SetForegroundColor};
 use crossterm::terminal::ClearType;
 use crossterm::{cursor, execute, queue, terminal};
 use std::io::{self, BufRead, Write};
@@ -57,6 +58,8 @@ pub struct EditorState {
     /// The draft that was in the buffer before history navigation began.
     saved_draft: Option<String>,
     search: Option<SearchState>,
+    /// Whether the expanded key-binding panel is showing (Ctrl+G).
+    show_help: bool,
 }
 
 impl EditorState {
@@ -72,6 +75,7 @@ impl EditorState {
             history_index: None,
             saved_draft: None,
             search: None,
+            show_help: false,
         }
     }
 
@@ -87,6 +91,22 @@ impl EditorState {
     /// The active reverse-search query, if search mode is on.
     pub fn search_query(&self) -> Option<&str> {
         self.search.as_ref().map(|s| s.query.as_str())
+    }
+
+    /// Whether the expanded key-binding panel is showing.
+    pub fn show_help(&self) -> bool {
+        self.show_help
+    }
+
+    /// The one-line hint drawn under the prompt, matching the current mode.
+    pub fn hint(&self) -> &'static str {
+        if self.show_help {
+            "^G hide keys"
+        } else if self.search.is_some() {
+            "^R next match \u{b7} Enter accept \u{b7} Esc cancel search \u{b7} ^G keys"
+        } else {
+            "\u{2191}\u{2193} history \u{b7} ^R search \u{b7} Enter send \u{b7} Esc cancel \u{b7} ^G keys"
+        }
     }
 
     /// Whether reverse search is active.
@@ -312,6 +332,10 @@ impl EditorState {
                 self.start_search();
                 return EditorAction::Continue;
             }
+            KeyCode::Char('g') if ctrl => {
+                self.show_help = !self.show_help;
+                return EditorAction::Continue;
+            }
             KeyCode::Char('c') if ctrl => {
                 return EditorAction::Finish(EditorOutcome::Cancelled);
             }
@@ -325,6 +349,10 @@ impl EditorState {
             KeyCode::Up => self.history_prev(),
             KeyCode::Down => self.history_next(),
             KeyCode::Esc => return EditorAction::Finish(EditorOutcome::Cancelled),
+            // Reserved: SPEC-03 makes Alt+Enter insert a line break. Swallow it
+            // now rather than submitting, so the key never means "send" to
+            // anyone who finds it early.
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {}
             KeyCode::Enter => {
                 // An empty or whitespace-only buffer is not submittable; stay open.
                 if self.buffer.trim().is_empty() {
@@ -343,7 +371,7 @@ impl EditorState {
 
         match key.code {
             KeyCode::Char('r') if ctrl => self.search_next(),
-            KeyCode::Char('g') if ctrl => self.cancel_search(),
+            KeyCode::Char('g') if ctrl => self.show_help = !self.show_help,
             KeyCode::Char('c') if ctrl => {
                 return EditorAction::Finish(EditorOutcome::Cancelled);
             }
@@ -389,7 +417,6 @@ impl Drop for RawModeGuard {
         let _ = terminal::disable_raw_mode();
         let mut out = io::stderr();
         let _ = execute!(out, cursor::Show);
-        let _ = writeln!(out);
         let _ = out.flush();
     }
 }
@@ -433,14 +460,25 @@ fn char_width(ch: char) -> usize {
 
 /// Draw the prompt line (and the search status line when searching), then park
 /// the terminal cursor at the logical cursor position.
-fn render(state: &EditorState, out: &mut impl Write) -> io::Result<()> {
-    queue!(
-        out,
-        cursor::Hide,
-        cursor::MoveToColumn(0),
-        terminal::Clear(ClearType::CurrentLine)
-    )?;
+/// The expanded key-binding panel shown by Ctrl+G.
+const HELP_LINES: &[&str] = &[
+    "  Move    \u{2190} \u{2192}   Home/End   ^A start   ^E end",
+    "  Edit    Bksp   Del        ^K kill-to-end   ^U kill-to-start",
+    "  Recall  \u{2191}\u{2193} history           ^R reverse search",
+    "  Screen  ^L redraw",
+    "  Send    Enter             Cancel  Esc / ^C",
+];
 
+/// Tracks how tall the prompt area was last drawn, so a redraw can erase
+/// exactly what it wrote before — the area grows and shrinks as the help panel
+/// is toggled and as search mode comes and goes.
+#[derive(Default)]
+struct PromptArea {
+    rows: u16,
+}
+
+/// The prompt line itself, and the cursor column within it.
+fn prompt_line(state: &EditorState) -> (String, usize) {
     if state.is_searching() {
         let query = state.search_query().unwrap_or_default();
         let status = if state.search_failed() {
@@ -448,23 +486,80 @@ fn render(state: &EditorState, out: &mut impl Write) -> io::Result<()> {
         } else {
             format!("(reverse-i-search)`{}': ", query)
         };
-        let line = format!("{}{}", status, state.buffer());
-        write!(out, "{}", line)?;
         let column = display_width(&status) + display_width(state.buffer());
-        queue!(out, cursor::MoveToColumn(column as u16), cursor::Show)?;
-        out.flush()?;
-        return Ok(());
+        return (format!("{}{}", status, state.buffer()), column);
     }
-
-    write!(out, "{}{}", PROMPT_INDICATOR, state.buffer())?;
 
     // The cursor column is a display width, not a character count, so wide
     // glyphs before the cursor push it right by two columns each.
     let before: String = state.buffer().chars().take(state.cursor()).collect();
     let column = display_width(PROMPT_INDICATOR) + display_width(&before);
+    (
+        format!("{}{}", PROMPT_INDICATOR, state.buffer()),
+        column,
+    )
+}
+
+/// The dim lines drawn under the prompt: the hint, plus the help panel when open.
+fn guide_lines(state: &EditorState) -> Vec<String> {
+    let mut lines = Vec::new();
+    if state.show_help() {
+        lines.extend(HELP_LINES.iter().map(|line| line.to_string()));
+    }
+    lines.push(state.hint().to_string());
+    lines
+}
+
+/// Draw the prompt area and park the terminal cursor on the prompt line.
+fn render(state: &EditorState, out: &mut impl Write, area: &mut PromptArea) -> io::Result<()> {
+    queue!(out, cursor::Hide)?;
+
+    // Climb back to the top of whatever was drawn last time, then wipe it.
+    if area.rows > 1 {
+        queue!(out, cursor::MoveUp(area.rows - 1))?;
+    }
+    queue!(
+        out,
+        cursor::MoveToColumn(0),
+        terminal::Clear(ClearType::FromCursorDown)
+    )?;
+
+    let (line, column) = prompt_line(state);
+    write!(out, "{}", line)?;
+
+    let guides = guide_lines(state);
+    for guide in &guides {
+        // Dimmed so the guidance never competes with the prompt itself.
+        write!(out, "\r\n")?;
+        queue!(out, SetForegroundColor(Color::DarkGrey))?;
+        write!(out, "{}", guide)?;
+        queue!(out, ResetColor)?;
+    }
+
+    // Writing the guide lines left the cursor below the prompt; come back up.
+    if !guides.is_empty() {
+        queue!(out, cursor::MoveUp(guides.len() as u16))?;
+    }
     queue!(out, cursor::MoveToColumn(column as u16), cursor::Show)?;
     out.flush()?;
+
+    area.rows = 1 + guides.len() as u16;
     Ok(())
+}
+
+/// Erase the prompt area on the way out, so the editor leaves no residue above
+/// whatever the caller prints next.
+fn clear_area(out: &mut impl Write, area: &PromptArea) -> io::Result<()> {
+    if area.rows > 1 {
+        queue!(out, cursor::MoveUp(area.rows - 1))?;
+    }
+    queue!(
+        out,
+        cursor::MoveToColumn(0),
+        terminal::Clear(ClearType::FromCursorDown),
+        cursor::Show
+    )?;
+    out.flush()
 }
 
 /// Run the interactive editor to completion.
@@ -485,9 +580,11 @@ pub fn compose(prefill: Option<String>, history: Vec<String>) -> Result<Option<E
 
     let mut state = EditorState::new(prefill, history);
     let mut out = io::stderr();
-    let outcome = run_loop(&mut state, &mut out, || {
+    let mut area = PromptArea::default();
+    let outcome = run_loop(&mut state, &mut out, &mut area, || {
         event::read().context("Failed to read a key event from the terminal")
     });
+    let _ = clear_area(&mut out, &area);
     drop(guard);
     outcome.map(Some)
 }
@@ -497,19 +594,20 @@ pub fn compose(prefill: Option<String>, history: Vec<String>) -> Result<Option<E
 fn run_loop<E>(
     state: &mut EditorState,
     out: &mut impl Write,
+    area: &mut PromptArea,
     mut next_event: E,
 ) -> Result<EditorOutcome>
 where
     E: FnMut() -> Result<Event>,
 {
-    render(state, out)?;
+    render(state, out, area)?;
 
     loop {
         let event = next_event()?;
 
         let Event::Key(key) = event else {
             // Resizes and mouse events just need a redraw.
-            render(state, out)?;
+            render(state, out, area)?;
             continue;
         };
 
@@ -519,14 +617,12 @@ where
         }
 
         match state.apply(key) {
-            EditorAction::Continue => render(state, out)?,
+            EditorAction::Continue => render(state, out, area)?,
             EditorAction::Redraw => {
-                queue!(
-                    out,
-                    terminal::Clear(ClearType::All),
-                    cursor::MoveTo(0, 0)
-                )?;
-                render(state, out)?;
+                queue!(out, terminal::Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                // The wipe took the old area with it; nothing to climb back over.
+                area.rows = 1;
+                render(state, out, area)?;
             }
             EditorAction::Finish(outcome) => return Ok(outcome),
         }
@@ -821,8 +917,9 @@ mod tests {
             history.iter().map(|s| s.to_string()).collect(),
         );
         let mut out = Vec::new();
+        let mut area = PromptArea::default();
         let mut keys = keys.into_iter();
-        run_loop(&mut state, &mut out, || {
+        run_loop(&mut state, &mut out, &mut area, || {
             keys.next()
                 .map(Event::Key)
                 .ok_or_else(|| anyhow!("ran out of scripted key events"))
@@ -1068,6 +1165,121 @@ mod tests {
             elapsed < std::time::Duration::from_millis(100),
             "reverse search over a full history took {:?}",
             elapsed
+        );
+    }
+
+    // --- On-screen help -----------------------------------------------------
+
+    #[test]
+    fn the_hint_line_names_the_essential_keys() {
+        let state = EditorState::new(None, Vec::new());
+        let hint = state.hint();
+        for key in ["history", "^R", "Enter", "Esc", "^G"] {
+            assert!(hint.contains(key), "hint should mention {}: {}", key, hint);
+        }
+    }
+
+    #[test]
+    fn the_hint_line_follows_the_mode() {
+        let mut state = with_history(&["find large files"]);
+        state.apply(ctrl('r'));
+        let hint = state.hint();
+        assert!(hint.contains("next match"), "search hint should say what ^R does now: {}", hint);
+        assert!(hint.contains("accept"), "search hint should say how to accept: {}", hint);
+    }
+
+    #[test]
+    fn ctrl_g_toggles_the_key_panel() {
+        let mut state = EditorState::new(None, Vec::new());
+        assert!(!state.show_help());
+
+        state.apply(ctrl('g'));
+        assert!(state.show_help());
+        assert_eq!(state.hint(), "^G hide keys");
+
+        state.apply(ctrl('g'));
+        assert!(!state.show_help());
+    }
+
+    #[test]
+    fn ctrl_g_toggles_the_key_panel_during_search() {
+        let mut state = with_history(&["find large files"]);
+        state.apply(ctrl('r'));
+        type_text(&mut state, "large");
+
+        state.apply(ctrl('g'));
+        assert!(state.show_help());
+        // Toggling help must not disturb the search itself.
+        assert!(state.is_searching());
+        assert_eq!(state.search_match(), Some("find large files"));
+    }
+
+    #[test]
+    fn ctrl_g_does_not_alter_the_buffer() {
+        let mut state = editor("find large files");
+        state.apply(ctrl('a'));
+        state.apply(key(KeyCode::Right));
+        state.apply(ctrl('g'));
+        assert_eq!(state.buffer(), "find large files");
+        assert_eq!(state.cursor(), 1);
+    }
+
+    #[test]
+    fn the_key_panel_covers_every_binding_the_editor_implements() {
+        let panel = HELP_LINES.join(" ");
+        for binding in ["^A", "^E", "^K", "^U", "^L", "^R", "Home/End", "Enter", "Esc"] {
+            assert!(
+                panel.contains(binding),
+                "the key panel should document {}",
+                binding
+            );
+        }
+    }
+
+    #[test]
+    fn rendering_tracks_how_tall_the_prompt_area_is() {
+        let mut state = EditorState::new(None, Vec::new());
+        let mut out = Vec::new();
+        let mut area = PromptArea::default();
+
+        // Prompt plus the hint line.
+        render(&state, &mut out, &mut area).unwrap();
+        assert_eq!(area.rows, 2);
+
+        // Prompt, the help panel, then the hint line.
+        state.apply(ctrl('g'));
+        render(&state, &mut out, &mut area).unwrap();
+        assert_eq!(area.rows, 2 + HELP_LINES.len() as u16);
+
+        // Closing the panel shrinks the area back.
+        state.apply(ctrl('g'));
+        render(&state, &mut out, &mut area).unwrap();
+        assert_eq!(area.rows, 2);
+    }
+
+    #[test]
+    fn rendering_draws_the_prompt_and_the_hint() {
+        let state = editor("find large files");
+        let mut out = Vec::new();
+        let mut area = PromptArea::default();
+        render(&state, &mut out, &mut area).unwrap();
+
+        let drawn = String::from_utf8(out).unwrap();
+        assert!(drawn.contains("sai> find large files"));
+        assert!(drawn.contains("^G keys"));
+    }
+
+    #[test]
+    fn alt_enter_is_reserved_and_does_not_submit() {
+        let mut state = editor("find large files");
+        let action = state.apply(KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT));
+        assert_eq!(action, EditorAction::Continue, "Alt+Enter must not submit");
+        assert_eq!(state.buffer(), "find large files");
+
+        // Plain Enter still submits.
+        assert_eq!(
+            state.apply(key(KeyCode::Enter)),
+            EditorAction::Finish(EditorOutcome::Submitted("find large files".to_string()))
         );
     }
 }

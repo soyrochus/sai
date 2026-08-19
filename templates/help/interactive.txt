@@ -11,12 +11,16 @@ Modes:
 - `sai --no-interactive` reads one line from stdin, no editor
 - Piped or redirected stdin never opens the editor
 
+A hint line under the prompt names the essential keys, and Ctrl+G expands the
+full list without leaving the editor.
+
 Editing keys:
 - Left/Right, Home/End   move the cursor
 - Backspace / Delete     remove a character
 - Ctrl+A / Ctrl+E        jump to start / end of line
 - Ctrl+K / Ctrl+U        delete to end / start of line
 - Ctrl+L                 clear and redraw the prompt area
+- Ctrl+G                 show / hide the full key list
 - Enter                  submit the prompt
 - Esc or Ctrl+C          cancel without generating anything
 
@@ -27,6 +31,9 @@ Prompt history:
 
 Recalled prompts are fully editable before you submit them. Submitted prompts
 are saved to a prompt history file; see `sai help history` for its location.
+
+Alt+Enter is reserved: it does nothing today and will insert a line break when
+multi-line composition arrives, so Enter keeps meaning "send".
 
 The editor composes prompts only. It is not a shell: pipes, redirects and job
 control are plain text to it, and it handles one prompt per invocation.

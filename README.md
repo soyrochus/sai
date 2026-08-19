@@ -256,10 +256,15 @@ retyping them:
 | `Ctrl+L`                | Clear and redraw the prompt area              |
 | Up / Down               | Walk through prior prompts, newest first      |
 | `Ctrl+R`                | Reverse search; press again for older matches |
+| `Ctrl+G`                | Show / hide the full key list                 |
 | Enter                   | Submit the prompt                             |
 | Esc / `Ctrl+C`          | Cancel without generating anything            |
 
-Recalled prompts are fully editable before submission.
+A hint line under the prompt names the essential keys, and `Ctrl+G` expands the
+full list in place. Recalled prompts are fully editable before submission.
+
+`Alt+Enter` is reserved: it does nothing today, and will insert a line break once
+multi-line composition lands, so Enter keeps meaning "send".
 
 Controlling the mode:
 

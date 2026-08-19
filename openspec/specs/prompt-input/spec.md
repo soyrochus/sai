@@ -1,8 +1,10 @@
+# Prompt Input Specification
+
 ## Purpose
 
 Defines how SAI obtains the natural-language prompt from the user before command generation: as a command-line argument, through an interactive mini editor, or through a plain non-interactive read, along with how the user cancels out of composition.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Argument-supplied prompt bypasses interactive input
 
@@ -109,10 +111,44 @@ Enter SHALL submit the current buffer. A submitted buffer that is empty or conta
 - **WHEN** the user presses `Ctrl+C` while composing
 - **THEN** SAI behaves as it does for Esc
 
+#### Scenario: `Alt+Enter` does not submit
+
+- **WHEN** the user presses `Alt+Enter`
+- **THEN** the buffer is unchanged and the editor stays open, the key being reserved for line breaks when multi-line composition arrives
+
 #### Scenario: Terminal state is restored
 
 - **WHEN** the editor exits by submission, by cancellation, or because an error occurred during composition
 - **THEN** the terminal is returned to its pre-editor mode with the cursor visible
+
+### Requirement: Editor documents its own key bindings on screen
+
+The editor SHALL always display a hint line beneath the prompt naming, at minimum, how to submit, how to cancel, how to reach history, and how to open the full key list. The hint SHALL describe the keys that apply to the current mode. `Ctrl+G` SHALL toggle an expanded panel listing every binding the editor implements. Guidance SHALL be visually subordinate to the prompt, SHALL NOT alter the buffer or cursor, and SHALL leave no residue on screen once the editor exits.
+
+#### Scenario: Hint line is visible while composing
+
+- **WHEN** the editor is open
+- **THEN** a hint line beneath the prompt names submission, cancellation, history navigation, reverse search, and the key that opens the full list
+
+#### Scenario: Expanded key panel
+
+- **WHEN** the user presses `Ctrl+G`
+- **THEN** a panel listing every implemented binding appears beneath the prompt, and pressing `Ctrl+G` again hides it leaving no residue
+
+#### Scenario: Help does not disturb composition
+
+- **WHEN** the user toggles the key panel while composing or while in reverse search
+- **THEN** the buffer, the cursor position, and any active search are unchanged
+
+#### Scenario: Hint follows the current mode
+
+- **WHEN** the user enters reverse search
+- **THEN** the hint line describes the search keys — stepping to the next match, accepting, and cancelling the search
+
+#### Scenario: Prompt area is erased on exit
+
+- **WHEN** the editor exits by submission or cancellation
+- **THEN** the prompt line and all guidance lines are erased, leaving the terminal clean for whatever is printed next
 
 ### Requirement: Non-interactive contexts fall back to plain input
 
