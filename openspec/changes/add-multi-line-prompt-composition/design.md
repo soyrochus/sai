@@ -85,7 +85,7 @@ While searching, the prompt area collapses to the existing single search-status 
 
 - **A prompt area taller than the terminal window** → The cursor-parking arithmetic assumes every row it counts is on screen; if the buffer plus guidance exceeds the window height, the terminal scrolls and the top-row anchor is lost, corrupting subsequent redraws. Mitigation: cap the rendered buffer rows at a window-height budget (query `terminal::size()`), rendering a truncation marker beyond it, and verify against a short window during manual testing. This is the single most likely source of visual breakage and deserves an explicit test pass.
 
-- **Terminals that do not distinguish `Alt+Enter`** → Some terminal emulators send a bare `Enter` for `Alt+Enter`, or nothing, meaning those users cannot insert a line break at all. Mitigation: the key panel documents the binding; if a terminal is found that cannot produce it, an additional binding can be added later without changing any spec. Not blocking — the previous change already shipped `Alt+Enter` as a swallowed key on these same terminals.
+- **Terminals that do not distinguish `Alt+Enter`** → Some terminal emulators send a bare `Enter` for `Alt+Enter`, or nothing. Mitigation: keep `Alt+Enter` and also bind `Ctrl+J`, whose line-feed control byte Crossterm distinguishes from carriage-return Enter in raw mode. Both bindings are documented in the hint and key panel.
 
 - **Windows key-event duplication** → `run_loop` already filters non-press events, so this is covered; noted only because the new bindings must not bypass that filter.
 

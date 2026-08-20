@@ -261,15 +261,15 @@ retyping them:
 | `Ctrl+L`                | Clear and redraw the prompt area              |
 | `Ctrl+R`                | Reverse search; press again for older matches |
 | `Ctrl+G`                | Show / hide the full key list                 |
-| `Alt+Enter`             | Insert a line break                           |
+| `Alt+Enter` / `Ctrl+J`  | Insert a line break                           |
 | Enter                   | Submit the prompt                             |
 | Esc / `Ctrl+C`          | Cancel without generating anything            |
 
 A hint line under the prompt names the essential keys, and `Ctrl+G` expands the
 full list in place. Recalled prompts are fully editable before submission.
 
-`Alt+Enter` inserts line breaks; Enter submits the entire composition as one
-prompt. Multi-line prompts retain their line structure in prompt history.
+`Alt+Enter` or `Ctrl+J` inserts line breaks; Enter submits the entire composition
+as one prompt. Multi-line prompts retain their line structure in prompt history.
 
 Controlling the mode:
 

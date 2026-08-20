@@ -186,7 +186,7 @@ pub const CLI_ABOUT: &str = "Sai-cli ('sai') - Tell the shell what you want, not
 pub const CLI_LONG_ABOUT: &str = "Natural language to safe shell commands using whitelisted tools and an AI backend. Run 'sai help topics' for detailed guidance.";
 pub const CLI_AFTER_HELP: &str = r#"Prompt input:
   Pass the prompt as an argument to run it directly. Omit it in a terminal and
-  sai opens a mini editor to compose one. Alt+Enter inserts line breaks;
+  sai opens a mini editor to compose one. Alt+Enter or Ctrl+J inserts line breaks;
   Up/Down move between lines and reach prompt history at buffer edges. Ctrl+R
   reverse-searches history. Run 'sai help interactive' for all key bindings.
 

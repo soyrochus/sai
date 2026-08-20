@@ -105,7 +105,7 @@ impl EditorState {
         } else if self.search.is_some() {
             "^R next match \u{b7} Enter accept \u{b7} Esc cancel search \u{b7} ^G keys"
         } else {
-            "\u{2191}\u{2193} move/history \u{b7} ^R search \u{b7} Alt+Enter line break \u{b7} Enter send \u{b7} Esc cancel \u{b7} ^G keys"
+            "\u{2191}\u{2193} move/history \u{b7} ^R search \u{b7} Alt+Enter/^J line break \u{b7} Enter send \u{b7} Esc cancel \u{b7} ^G keys"
         }
     }
 
@@ -385,6 +385,7 @@ impl EditorState {
         match key.code {
             KeyCode::Char('a') if ctrl => self.move_home(),
             KeyCode::Char('e') if ctrl => self.move_end(),
+            KeyCode::Char('j') if ctrl => self.insert_char('\n'),
             KeyCode::Char('k') if ctrl => self.kill_to_end(),
             KeyCode::Char('u') if ctrl => self.kill_to_start(),
             KeyCode::Char('l') if ctrl => return EditorAction::Redraw,
@@ -526,7 +527,7 @@ fn char_width(ch: char) -> usize {
 const HELP_LINES: &[&str] = &[
     "  Move    \u{2190} \u{2192} \u{2191} \u{2193}   Home/End   ^A start   ^E end",
     "  Edit    Bksp   Del        ^K kill-to-end   ^U kill-to-start",
-    "  Compose Alt+Enter line break",
+    "  Compose Alt+Enter / ^J line break",
     "  Recall  \u{2191}\u{2193} at buffer edges   ^R reverse search",
     "  Screen  ^L redraw",
     "  Send    Enter             Cancel  Esc / ^C",
@@ -1615,7 +1616,7 @@ mod tests {
     fn the_hint_line_names_the_essential_keys() {
         let state = EditorState::new(None, Vec::new());
         let hint = state.hint();
-        for key in ["history", "^R", "Alt+Enter", "Enter", "Esc", "^G"] {
+        for key in ["history", "^R", "Alt+Enter", "^J", "Enter", "Esc", "^G"] {
             assert!(hint.contains(key), "hint should mention {}: {}", key, hint);
         }
     }
@@ -1669,8 +1670,21 @@ mod tests {
     fn the_key_panel_covers_every_binding_the_editor_implements() {
         let panel = HELP_LINES.join(" ");
         for binding in [
-            "\u{2190}", "\u{2192}", "\u{2191}", "\u{2193}", "^A", "^E", "^K", "^U", "^L", "^R",
-            "Home/End", "Alt+Enter", "Enter", "Esc",
+            "\u{2190}",
+            "\u{2192}",
+            "\u{2191}",
+            "\u{2193}",
+            "^A",
+            "^E",
+            "^K",
+            "^U",
+            "^L",
+            "^R",
+            "Home/End",
+            "Alt+Enter",
+            "^J",
+            "Enter",
+            "Esc",
         ] {
             assert!(
                 panel.contains(binding),
@@ -1849,5 +1863,15 @@ mod tests {
             state.apply(key(KeyCode::Enter)),
             EditorAction::Finish(EditorOutcome::Submitted("find large files\n".to_string()))
         );
+    }
+
+    #[test]
+    fn ctrl_j_inserts_a_line_break_without_submitting() {
+        let mut state = editor("find large files");
+        let action = state.apply(ctrl('j'));
+
+        assert_eq!(action, EditorAction::Continue, "Ctrl+J must not submit");
+        assert_eq!(state.buffer(), "find large files\n");
+        assert_eq!((state.cursor_line(), state.cursor_column()), (1, 0));
     }
 }

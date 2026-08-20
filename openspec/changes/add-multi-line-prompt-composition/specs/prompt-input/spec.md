@@ -2,7 +2,7 @@
 
 ### Requirement: Prompt buffer holds multiple lines
 
-The interactive editor SHALL allow the prompt buffer to contain line breaks. `Alt+Enter` SHALL insert a line break at the cursor, splitting the current line and leaving the cursor at the start of the new line. There SHALL be no limit on the number of lines other than available memory. A buffer containing line breaks SHALL be rendered across one terminal row per buffer line, with rows after the first carrying a continuation indicator distinguishable from the prompt indicator, and the visible cursor SHALL sit on the row and column matching its logical position.
+The interactive editor SHALL allow the prompt buffer to contain line breaks. `Alt+Enter` and `Ctrl+J` SHALL each insert a line break at the cursor, splitting the current line and leaving the cursor at the start of the new line. `Ctrl+J` SHALL remain available as a terminal-portable alternative when Alt/Option mappings do not distinguish `Alt+Enter`. There SHALL be no limit on the number of lines other than available memory. A buffer containing line breaks SHALL be rendered across one terminal row per buffer line, with rows after the first carrying a continuation indicator distinguishable from the prompt indicator, and the visible cursor SHALL sit on the row and column matching its logical position.
 
 #### Scenario: Inserting a line break
 
@@ -13,6 +13,11 @@ The interactive editor SHALL allow the prompt buffer to contain line breaks. `Al
 
 - **WHEN** the buffer is `find rust files changed this week` with the cursor after `files` and the user presses `Alt+Enter`
 - **THEN** the buffer holds `find rust files` and ` changed this week` as two lines, and the cursor is at the start of the second line
+
+#### Scenario: Inserting a line break without Alt/Option
+
+- **WHEN** the user presses `Ctrl+J` while composing
+- **THEN** a line break is inserted at the cursor exactly as for `Alt+Enter`, and the editor stays open
 
 #### Scenario: Continuation rows are marked
 
@@ -134,7 +139,7 @@ The interactive editor SHALL support the following shortcuts, each acting on the
 
 ### Requirement: Submission and cancellation are unambiguous
 
-Enter SHALL submit the current buffer. A submitted buffer that is empty or contains only whitespace SHALL NOT be sent for generation; the editor SHALL remain open awaiting input. `Alt+Enter` SHALL insert a line break rather than submit, whatever the cursor position and however many lines the buffer already holds. Esc and `Ctrl+C` SHALL cancel composition, leaving no generated command, no execution, and no new prompt-history entry, and SHALL exit with a success status distinguishable from an error. Cancellation SHALL discard a multi-line buffer exactly as it discards a single-line one, with no confirmation step.
+Enter SHALL submit the current buffer. A submitted buffer that is empty or contains only whitespace SHALL NOT be sent for generation; the editor SHALL remain open awaiting input. `Alt+Enter` and `Ctrl+J` SHALL insert a line break rather than submit, whatever the cursor position and however many lines the buffer already holds. Esc and `Ctrl+C` SHALL cancel composition, leaving no generated command, no execution, and no new prompt-history entry, and SHALL exit with a success status distinguishable from an error. Cancellation SHALL discard a multi-line buffer exactly as it discards a single-line one, with no confirmation step.
 
 #### Scenario: Submitting an empty buffer
 
@@ -154,6 +159,11 @@ Enter SHALL submit the current buffer. A submitted buffer that is empty or conta
 #### Scenario: `Alt+Enter` does not submit
 
 - **WHEN** the user presses `Alt+Enter`
+- **THEN** a line break is inserted at the cursor and the editor stays open, no submission occurring
+
+#### Scenario: `Ctrl+J` does not submit
+
+- **WHEN** the user presses `Ctrl+J`
 - **THEN** a line break is inserted at the cursor and the editor stays open, no submission occurring
 
 #### Scenario: Enter submits from any line

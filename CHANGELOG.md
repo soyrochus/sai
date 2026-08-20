@@ -20,8 +20,9 @@ Highlights:
 - New flags: `--interactive` / `-i`, `--no-interactive`, and `--prompt-config`.
 - Full line editing in the prompt: cursor movement, Home/End, Delete,
   `Ctrl+A`/`Ctrl+E`/`Ctrl+K`/`Ctrl+U`/`Ctrl+L`, Esc / `Ctrl+C` to cancel.
-- Multi-line prompt composition with `Alt+Enter`. Up/Down move between buffer
-  lines before falling through to history at the first/last line, while
+- Multi-line prompt composition with `Alt+Enter` or the terminal-portable
+  `Ctrl+J` fallback. Up/Down move between buffer lines before falling through
+  to history at the first/last line, while
   `Ctrl+A`/`Ctrl+E`/`Ctrl+K`/`Ctrl+U` now act on the current line.
 - Prompt history is stored as NDJSON in `prompt_history.log` under the config
   directory, rotating at 256 KB and created owner-readable only on Unix.

@@ -56,3 +56,11 @@
 - [x] 8.6 Note Linux and Windows Terminal/PowerShell verification as still outstanding, alongside the equivalent item carried over from the previous editor change.
 
 Verification note: Linux and Windows Terminal/PowerShell still require human verification, as does the matching cross-platform item in the archived interactive-editor change. The macOS PTY pass covered line insertion, wide-character cursor alignment, vertical movement, grow/shrink redraw, terminal-height truncation, and cleanup after both submission and cancellation.
+
+## 9. Terminal-portable line-break fallback
+
+- [x] 9.1 Bind `Ctrl+J` to line-break insertion in edit mode without removing `Alt+Enter`, and add a regression test proving it inserts rather than submits.
+- [x] 9.2 Amend the prompt-input contract, design rationale, on-screen hint/key panel, README, interactive help topic, and changelog to present both bindings.
+- [x] 9.3 Run `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, `openspec validate add-multi-line-prompt-composition --strict`, and `git diff --check` clean.
+
+Formatting note: repository-wide `cargo fmt --check` remains red on pre-existing formatting differences across several files; this follow-up does not reformat unrelated dirty-worktree changes.
