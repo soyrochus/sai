@@ -36,6 +36,18 @@ Current release and toolchain:
   with a missing-argument error.
 - Added **persistent prompt history** with Up/Down navigation and `Ctrl+R`
   reverse search, stored separately from the execution history log.
+- Added **multi-line prompt composition**: `Alt+Enter` or the terminal-portable
+  `Ctrl+J` inserts a line break, Enter still submits the whole composition, and
+  the editor reports the current line and buffer size. Up/Down move between
+  buffer lines and reach history at the first/last line, while `Ctrl+A`,
+  `Ctrl+E`, `Ctrl+K` and `Ctrl+U` act on the current line. Single-line
+  composition is unaffected.
+- Added a **preflight card** before every confirmation, showing the submitted
+  prompt, full command, validated primary tool, effective safety mode, optional
+  scope and explanation source, locally computed risk markers, and prompt-config
+  provenance. **Confirmation output changed shape**, and risk markers now appear
+  on every confirmation instead of only under `--unrestricted`. This is
+  stderr-only: execution, exit codes and history records are unchanged.
 - Added `--interactive` / `-i`, `--no-interactive`, and `--prompt-config`.
 - Passing a prompt as an argument is unchanged: it runs directly, without the
   editor. Piped and redirected input never opens the editor.
@@ -266,7 +278,9 @@ retyping them:
 | Esc / `Ctrl+C`          | Cancel without generating anything            |
 
 A hint line under the prompt names the essential keys, and `Ctrl+G` expands the
-full list in place. Recalled prompts are fully editable before submission.
+full list in place. An indicator reports the line the cursor is on, the total
+line count, and the buffer size in characters. Recalled prompts are fully
+editable before submission.
 
 `Alt+Enter` or `Ctrl+J` inserts line breaks; Enter submits the entire composition
 as one prompt. Multi-line prompts retain their line structure in prompt history.
@@ -470,16 +484,24 @@ When sai-cli generates a command using this tool, you'll automatically get an ex
 ```bash
 $ sai "remove all temp files"
 >> rm -rf /tmp/*
-Note: This tool requires explanation mode (force_explain is enabled)
-
-Generated command:
-  rm -rf /tmp/*
 
 Explanation:
   [LLM provides detailed explanation of what will happen]
 
+Preflight:
+  Prompt:  remove all temp files
+  Command: rm -rf /tmp/*
+  Tool:    rm
+  Safety:  default
+  Explain: tool config (rm: force_explain)
+  Risk:    [destructive] rm — recursive and forced deletion
+           [broad wildcard] /tmp/* reaches outside the working directory
+  Config:  global default (~/.config/sai/config.yaml)
 Execute this command? [y/N]
 ```
+
+The card's `Explain` row names the tool config as the reason, so you can always
+tell whether an explanation came from your flag or from a tool's own setting.
 
 This defense-in-depth approach ensures critical operations always receive extra scrutiny while maintaining explicit user control via `--explain` for all other tools.
 
@@ -639,14 +661,14 @@ This is particularly useful after errors or unexpected results, as the LLM can e
 
 - `src/main.rs`: minimal bootstrap that calls into the real application logic.
 - `src/app.rs`: orchestrates CLI parsing, configuration loading, LLM invocation, confirmation, and command execution. Exposes `run_with_dependencies` for dependency injection during tests.
-- Supporting modules isolate responsibilities: `cli` (clap parser), `config` (YAML + env resolution), `prompt` (system prompt builder), `peek` (sample ingestion), `llm` (CommandGenerator trait + HTTP backend), `safety` (operator checks), `executor` (CommandExecutor trait + shell bridge), `history` (NDJSON logging and analysis), `scope` (directory context), and `ops` (init/create/add/list helpers).
+- Supporting modules isolate responsibilities: `cli` (clap parser and prompt-source resolution), `config` (YAML + env resolution), `prompt` (system prompt builder), `peek` (sample ingestion), `llm` (CommandGenerator trait + HTTP backend), `safety` (operator checks and risk markers), `safety_mode` (the default/unsafe/unrestricted ladder), `editor` (interactive mini editor state machine and terminal driver), `prompt_history` (NDJSON prompt store, recall and search), `executor` (CommandExecutor trait + shell bridge), `history` (NDJSON logging and analysis), `scope` (directory context), `help` (hierarchical help topics), and `ops` (init/create/add/list helpers).
 - The trait boundaries (`CommandGenerator`, `CommandExecutor`) allow swapping in mocks or alternative implementations (e.g., offline generators or dry-run executors) without touching the application core.
 
 ## Development
 
 - Format with `cargo fmt`.
 - Run the unit suite with `cargo test`; it exercises filesystem helpers via `tempfile` and stays offline.
-- Inspect or extend the technical deep dive in `TECHSPEC.md` for module-level rationale and expected behaviours.
+- Inspect or extend the technical deep dive in [docs/TECHSPEC.md](docs/TECHSPEC.md) for module-level rationale and expected behaviours.
 
 ## Philosophy
 
