@@ -20,10 +20,14 @@ Highlights:
 - New flags: `--interactive` / `-i`, `--no-interactive`, and `--prompt-config`.
 - Full line editing in the prompt: cursor movement, Home/End, Delete,
   `Ctrl+A`/`Ctrl+E`/`Ctrl+K`/`Ctrl+U`/`Ctrl+L`, Esc / `Ctrl+C` to cancel.
+- Multi-line prompt composition with `Alt+Enter`. Up/Down move between buffer
+  lines before falling through to history at the first/last line, while
+  `Ctrl+A`/`Ctrl+E`/`Ctrl+K`/`Ctrl+U` now act on the current line.
 - Prompt history is stored as NDJSON in `prompt_history.log` under the config
   directory, rotating at 256 KB and created owner-readable only on Unix.
 
 Compatibility:
+- Single-line composition is unaffected by the new line-relative key semantics.
 - Passing a prompt as an argument is unchanged: it runs directly, never through
   the editor. Piped and redirected input never opens the editor either.
 - **Behaviour change**: `sai` with no arguments no longer exits with clap's

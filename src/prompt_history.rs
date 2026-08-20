@@ -48,8 +48,7 @@ pub fn record(prompt: &str) {
 }
 
 fn try_record(prompt: &str) -> Result<()> {
-    let prompt = prompt.trim();
-    if prompt.is_empty() {
+    if prompt.trim().is_empty() {
         return Ok(());
     }
 
@@ -223,6 +222,31 @@ mod tests {
         record("list json files");
 
         assert_eq!(load(), vec!["list json files".to_string()]);
+    }
+
+    #[test]
+    fn multiline_prompt_round_trips_as_one_entry_without_losing_breaks() {
+        let temp = TempDir::new().unwrap();
+        let _guard = set_config_dir_override_for_tests(temp.path().join("config"));
+        let prompt = "first line\nsecond line\nthird line";
+
+        record(prompt);
+
+        assert_eq!(load(), vec![prompt.to_string()]);
+        let stored = fs::read_to_string(prompt_history_path()).unwrap();
+        assert_eq!(stored.lines().count(), 1, "one prompt must occupy one NDJSON record");
+        assert!(stored.contains("first line\\nsecond line\\nthird line"));
+    }
+
+    #[test]
+    fn differently_placed_line_breaks_are_distinct_prompts() {
+        let temp = TempDir::new().unwrap();
+        let _guard = set_config_dir_override_for_tests(temp.path().join("config"));
+
+        record("ab\nc");
+        record("a\nbc");
+
+        assert_eq!(load(), vec!["a\nbc".to_string(), "ab\nc".to_string()]);
     }
 
     #[test]

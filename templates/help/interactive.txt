@@ -1,5 +1,5 @@
-Run `sai` with no prompt in a terminal and it opens a mini editor to compose
-your natural language prompt, so you can edit before you commit to a request.
+Run `sai` with no prompt in a terminal and it opens a multi-line mini editor to
+compose your natural language prompt, so you can edit before you commit.
 
     $ sai
     sai> find every json file changed this week
@@ -15,25 +15,28 @@ A hint line under the prompt names the essential keys, and Ctrl+G expands the
 full list without leaving the editor.
 
 Editing keys:
-- Left/Right, Home/End   move the cursor
+- Left/Right             move across characters and line breaks
+- Up/Down                move between lines; use history at buffer edges
+- Home/End               move to the current line's start / end
 - Backspace / Delete     remove a character
-- Ctrl+A / Ctrl+E        jump to start / end of line
-- Ctrl+K / Ctrl+U        delete to end / start of line
+- Ctrl+A / Ctrl+E        jump to current line start / end
+- Ctrl+K / Ctrl+U        delete within the current line only
 - Ctrl+L                 clear and redraw the prompt area
 - Ctrl+G                 show / hide the full key list
+- Alt+Enter              insert a line break
 - Enter                  submit the prompt
 - Esc or Ctrl+C          cancel without generating anything
 
 Prompt history:
-- Up / Down              walk through prior prompts, newest first
+- Up / Down              at the first / last buffer line, walk history
 - Ctrl+R                 reverse search; Ctrl+R again steps to older matches
 - Esc                    leave search, restoring what you had typed
 
 Recalled prompts are fully editable before you submit them. Submitted prompts
 are saved to a prompt history file; see `sai help history` for its location.
 
-Alt+Enter is reserved: it does nothing today and will insert a line break when
-multi-line composition arrives, so Enter keeps meaning "send".
+Alt+Enter inserts a line break while Enter still submits the entire prompt as
+one payload. Recalled multi-line prompts retain their original line structure.
 
 The editor composes prompts only. It is not a shell: pipes, redirects and job
 control are plain text to it, and it handles one prompt per invocation.

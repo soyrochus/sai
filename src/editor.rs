@@ -105,7 +105,7 @@ impl EditorState {
         } else if self.search.is_some() {
             "^R next match \u{b7} Enter accept \u{b7} Esc cancel search \u{b7} ^G keys"
         } else {
-            "\u{2191}\u{2193} history \u{b7} ^R search \u{b7} Enter send \u{b7} Esc cancel \u{b7} ^G keys"
+            "\u{2191}\u{2193} move/history \u{b7} ^R search \u{b7} Alt+Enter line break \u{b7} Enter send \u{b7} Esc cancel \u{b7} ^G keys"
         }
     }
 
@@ -132,6 +132,43 @@ impl EditorState {
 
     fn char_count(&self) -> usize {
         self.buffer.chars().count()
+    }
+
+    /// Character-index bounds for every logical line. The end excludes the
+    /// line break, so a cursor on that boundary belongs to the line it ends.
+    fn line_bounds(&self) -> Vec<(usize, usize)> {
+        let mut bounds = Vec::new();
+        let mut start = 0;
+
+        for (index, ch) in self.buffer.chars().enumerate() {
+            if ch == '\n' {
+                bounds.push((start, index));
+                start = index + 1;
+            }
+        }
+        bounds.push((start, self.char_count()));
+        bounds
+    }
+
+    fn cursor_line(&self) -> usize {
+        self.line_bounds()
+            .iter()
+            .position(|&(_, end)| self.cursor <= end)
+            .unwrap_or_else(|| self.line_bounds().len().saturating_sub(1))
+    }
+
+    fn cursor_column(&self) -> usize {
+        let bounds = self.line_bounds();
+        let line = bounds
+            .iter()
+            .position(|&(_, end)| self.cursor() <= end)
+            .unwrap_or_else(|| bounds.len().saturating_sub(1));
+        self.cursor().saturating_sub(bounds[line].0)
+    }
+
+    fn current_line_bounds(&self) -> (usize, usize) {
+        let bounds = self.line_bounds();
+        bounds[self.cursor_line()]
     }
 
     /// Byte offset of character index `index`, for splicing into the buffer.
@@ -167,14 +204,18 @@ impl EditorState {
     }
 
     fn kill_to_end(&mut self) {
-        let offset = self.byte_offset(self.cursor);
-        self.buffer.truncate(offset);
+        let (_, line_end) = self.current_line_bounds();
+        let start = self.byte_offset(self.cursor);
+        let end = self.byte_offset(line_end);
+        self.buffer.replace_range(start..end, "");
     }
 
     fn kill_to_start(&mut self) {
-        let offset = self.byte_offset(self.cursor);
-        self.buffer.replace_range(..offset, "");
-        self.cursor = 0;
+        let (line_start, _) = self.current_line_bounds();
+        let start = self.byte_offset(line_start);
+        let end = self.byte_offset(self.cursor);
+        self.buffer.replace_range(start..end, "");
+        self.cursor = line_start;
     }
 
     fn move_left(&mut self) {
@@ -188,11 +229,30 @@ impl EditorState {
     }
 
     fn move_home(&mut self) {
-        self.cursor = 0;
+        self.cursor = self.current_line_bounds().0;
     }
 
     fn move_end(&mut self) {
-        self.cursor = self.char_count();
+        self.cursor = self.current_line_bounds().1;
+    }
+
+    fn move_up(&mut self) {
+        let line = self.cursor_line();
+        if line == 0 {
+            return;
+        }
+        let column = self.cursor_column();
+        let (start, end) = self.line_bounds()[line - 1];
+        self.cursor = start + column.min(end - start);
+    }
+
+    fn move_down(&mut self) {
+        let bounds = self.line_bounds();
+        let line = self.cursor_line();
+        let Some(&(start, end)) = bounds.get(line + 1) else {
+            return;
+        };
+        self.cursor = start + self.cursor_column().min(end - start);
     }
 
     /// Replace the buffer wholesale and park the cursor at the end.
@@ -346,13 +406,14 @@ impl EditorState {
             KeyCode::Right => self.move_right(),
             KeyCode::Home => self.move_home(),
             KeyCode::End => self.move_end(),
+            KeyCode::Up if self.cursor_line() > 0 => self.move_up(),
             KeyCode::Up => self.history_prev(),
+            KeyCode::Down if self.cursor_line() + 1 < self.line_bounds().len() => self.move_down(),
             KeyCode::Down => self.history_next(),
             KeyCode::Esc => return EditorAction::Finish(EditorOutcome::Cancelled),
-            // Reserved: SPEC-03 makes Alt+Enter insert a line break. Swallow it
-            // now rather than submitting, so the key never means "send" to
-            // anyone who finds it early.
-            KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {}
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {
+                self.insert_char('\n')
+            }
             KeyCode::Enter => {
                 // An empty or whitespace-only buffer is not submittable; stay open.
                 if self.buffer.trim().is_empty() {
@@ -423,6 +484,9 @@ impl Drop for RawModeGuard {
 
 /// The indicator drawn at the start of the prompt line.
 const PROMPT_INDICATOR: &str = "sai> ";
+/// Keeps continuation text aligned with the first prompt row.
+const CONTINUATION_INDICATOR: &str = "  |  ";
+const TRUNCATION_ROW: &str = "  …  prompt rows omitted";
 
 /// Display width of a string, counting wide characters as two columns.
 ///
@@ -458,19 +522,18 @@ fn char_width(ch: char) -> usize {
     }
 }
 
-/// Draw the prompt line (and the search status line when searching), then park
-/// the terminal cursor at the logical cursor position.
 /// The expanded key-binding panel shown by Ctrl+G.
 const HELP_LINES: &[&str] = &[
-    "  Move    \u{2190} \u{2192}   Home/End   ^A start   ^E end",
+    "  Move    \u{2190} \u{2192} \u{2191} \u{2193}   Home/End   ^A start   ^E end",
     "  Edit    Bksp   Del        ^K kill-to-end   ^U kill-to-start",
-    "  Recall  \u{2191}\u{2193} history           ^R reverse search",
+    "  Compose Alt+Enter line break",
+    "  Recall  \u{2191}\u{2193} at buffer edges   ^R reverse search",
     "  Screen  ^L redraw",
     "  Send    Enter             Cancel  Esc / ^C",
 ];
 
-/// The prompt line itself, and the cursor column within it.
-fn prompt_line(state: &EditorState) -> (String, usize) {
+/// Rendered prompt rows and the cursor's row/display-column within them.
+fn prompt_rows(state: &EditorState) -> (Vec<String>, (usize, usize)) {
     if state.is_searching() {
         let query = state.search_query().unwrap_or_default();
         let status = if state.search_failed() {
@@ -478,23 +541,40 @@ fn prompt_line(state: &EditorState) -> (String, usize) {
         } else {
             format!("(reverse-i-search)`{}': ", query)
         };
-        let column = display_width(&status) + display_width(state.buffer());
-        return (format!("{}{}", status, state.buffer()), column);
+        let preview = state.buffer().replace('\n', " ↵ ");
+        let column = display_width(&status) + display_width(&preview);
+        return (vec![format!("{}{}", status, preview)], (0, column));
     }
 
-    // The cursor column is a display width, not a character count, so wide
-    // glyphs before the cursor push it right by two columns each.
-    let before: String = state.buffer().chars().take(state.cursor()).collect();
-    let column = display_width(PROMPT_INDICATOR) + display_width(&before);
-    (
-        format!("{}{}", PROMPT_INDICATOR, state.buffer()),
-        column,
-    )
+    let rows = state
+        .buffer()
+        .split('\n')
+        .enumerate()
+        .map(|(index, line)| {
+            let indicator = if index == 0 {
+                PROMPT_INDICATOR
+            } else {
+                CONTINUATION_INDICATOR
+            };
+            format!("{}{}", indicator, line)
+        })
+        .collect();
+
+    let cursor_row = state.cursor_line();
+    let cursor_line = state.buffer().split('\n').nth(cursor_row).unwrap_or_default();
+    let before: String = cursor_line.chars().take(state.cursor_column()).collect();
+    let cursor_column = display_width(PROMPT_INDICATOR) + display_width(&before);
+    (rows, (cursor_row, cursor_column))
 }
 
 /// The dim lines drawn under the prompt: the hint, plus the help panel when open.
 fn guide_lines(state: &EditorState) -> Vec<String> {
-    let mut lines = Vec::new();
+    let mut lines = vec![format!(
+        "line {}/{} · {} chars",
+        state.cursor_line() + 1,
+        state.line_bounds().len(),
+        state.char_count()
+    )];
     if state.show_help() {
         lines.extend(HELP_LINES.iter().map(|line| line.to_string()));
     }
@@ -502,26 +582,100 @@ fn guide_lines(state: &EditorState) -> Vec<String> {
     lines
 }
 
-/// Draw the prompt area and park the terminal cursor on the prompt line.
+/// Keep a prompt taller than the available rows anchored and its cursor visible.
+fn cap_prompt_rows(
+    rows: Vec<String>,
+    cursor: (usize, usize),
+    max_rows: usize,
+) -> (Vec<String>, (usize, usize)) {
+    let max_rows = max_rows.max(1);
+    if rows.len() <= max_rows {
+        return (rows, cursor);
+    }
+
+    if max_rows == 1 {
+        let mut row = rows[cursor.0].clone();
+        row.push_str("  …");
+        return (vec![row], (0, cursor.1));
+    }
+
+    let content_rows = max_rows - 1;
+    if cursor.0 < content_rows {
+        let mut visible = rows[..content_rows].to_vec();
+        visible.push(TRUNCATION_ROW.to_string());
+        return (visible, cursor);
+    }
+
+    if cursor.0 >= rows.len() - content_rows {
+        let start = rows.len() - content_rows;
+        let mut visible = vec![TRUNCATION_ROW.to_string()];
+        visible.extend_from_slice(&rows[start..]);
+        return (visible, (cursor.0 - start + 1, cursor.1));
+    }
+
+    if max_rows == 2 {
+        let mut row = rows[cursor.0].clone();
+        row.push_str("  …");
+        return (vec![TRUNCATION_ROW.to_string(), row], (1, cursor.1));
+    }
+
+    let middle_rows = max_rows - 2;
+    let start = cursor.0.saturating_sub(middle_rows / 2);
+    let mut visible = vec![TRUNCATION_ROW.to_string()];
+    visible.extend_from_slice(&rows[start..start + middle_rows]);
+    visible.push(TRUNCATION_ROW.to_string());
+    (visible, (cursor.0 - start + 1, cursor.1))
+}
+
+/// Draw the prompt area and park the terminal cursor on its logical row.
 ///
-/// Entered and left with the cursor on the prompt line — the top row of the
-/// area. That invariant is what makes this correct: clearing from the cursor
-/// down erases the whole area however tall it was, so no upward movement is
-/// needed on entry, and every descent made while drawing is undone before
-/// returning. A render must therefore have a net vertical displacement of zero;
-/// anything else walks the prompt off its anchor a row at a time.
+/// The top-row anchor is saved independently of the visible cursor. Each render
+/// restores it, reserves enough terminal rows for the full area, then saves the
+/// possibly scroll-adjusted anchor before drawing. Every drawing descent is
+/// undone before parking on the logical cursor row. This keeps repeated renders
+/// from drifting even when the prompt starts near the bottom of the viewport.
 fn render(state: &EditorState, out: &mut impl Write) -> io::Result<()> {
+    let terminal_rows = terminal::size()
+        .map(|(_, rows)| rows as usize)
+        .unwrap_or(usize::MAX);
+    render_with_height(state, out, terminal_rows)
+}
+
+fn render_with_height(
+    state: &EditorState,
+    out: &mut impl Write,
+    terminal_rows: usize,
+) -> io::Result<()> {
+    let guides = guide_lines(state);
+    let max_prompt_rows = terminal_rows.saturating_sub(guides.len()).max(1);
+    let (rows, (cursor_row, cursor_column)) = prompt_rows(state);
+    let (rows, (cursor_row, cursor_column)) =
+        cap_prompt_rows(rows, (cursor_row, cursor_column), max_prompt_rows);
+
     queue!(
         out,
+        cursor::RestorePosition,
         cursor::Hide,
         cursor::MoveToColumn(0),
         terminal::Clear(ClearType::FromCursorDown)
     )?;
 
-    let (line, column) = prompt_line(state);
-    write!(out, "{}", line)?;
+    // Drawing below a cursor near the terminal's bottom scrolls the viewport.
+    // Reserve the full area first, then save the anchor after any such scroll,
+    // so the next keypress restores to the same visible prompt row.
+    let area_rows = rows.len() + guides.len();
+    for _ in 1..area_rows {
+        write!(out, "\r\n")?;
+    }
+    if area_rows > 1 {
+        queue!(out, cursor::MoveUp((area_rows - 1) as u16))?;
+    }
+    queue!(out, cursor::MoveToColumn(0), cursor::SavePosition)?;
 
-    let guides = guide_lines(state);
+    write!(out, "{}", rows[0])?;
+    for row in rows.iter().skip(1) {
+        write!(out, "\r\n{}", row)?;
+    }
     for guide in &guides {
         // Dimmed so the guidance never competes with the prompt itself.
         write!(out, "\r\n")?;
@@ -530,11 +684,19 @@ fn render(state: &EditorState, out: &mut impl Write) -> io::Result<()> {
         queue!(out, ResetColor)?;
     }
 
-    // Writing the guide lines left the cursor below the prompt; come back up.
-    if !guides.is_empty() {
-        queue!(out, cursor::MoveUp(guides.len() as u16))?;
+    // Undo every row descended while drawing, then park on the logical row.
+    let descended = rows.len().saturating_sub(1) + guides.len();
+    if descended > 0 {
+        queue!(out, cursor::MoveUp(descended as u16))?;
     }
-    queue!(out, cursor::MoveToColumn(column as u16), cursor::Show)?;
+    if cursor_row > 0 {
+        queue!(out, cursor::MoveDown(cursor_row as u16))?;
+    }
+    queue!(
+        out,
+        cursor::MoveToColumn(cursor_column as u16),
+        cursor::Show
+    )?;
     out.flush()?;
     Ok(())
 }
@@ -542,10 +704,10 @@ fn render(state: &EditorState, out: &mut impl Write) -> io::Result<()> {
 /// Erase the prompt area on the way out, so the editor leaves no residue above
 /// whatever the caller prints next.
 fn clear_area(out: &mut impl Write) -> io::Result<()> {
-    // Also entered with the cursor on the prompt line, so clearing downward is
-    // enough; climbing first would take the line above the editor with it.
+    // Restore the saved top-row anchor before erasing the variable-height area.
     queue!(
         out,
+        cursor::RestorePosition,
         cursor::MoveToColumn(0),
         terminal::Clear(ClearType::FromCursorDown),
         cursor::Show
@@ -589,6 +751,7 @@ fn run_loop<E>(
 where
     E: FnMut() -> Result<Event>,
 {
+    queue!(out, cursor::SavePosition)?;
     render(state, out)?;
 
     loop {
@@ -608,7 +771,12 @@ where
         match state.apply(key) {
             EditorAction::Continue => render(state, out)?,
             EditorAction::Redraw => {
-                queue!(out, terminal::Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                queue!(
+                    out,
+                    terminal::Clear(ClearType::All),
+                    cursor::MoveTo(0, 0),
+                    cursor::SavePosition
+                )?;
                 render(state, out)?;
             }
             EditorAction::Finish(outcome) => return Ok(outcome),
@@ -670,6 +838,45 @@ mod tests {
     }
 
     #[test]
+    fn line_helpers_cover_empty_single_and_unicode_buffers() {
+        let empty = editor("");
+        assert_eq!(empty.line_bounds(), vec![(0, 0)]);
+        assert_eq!(empty.cursor_line(), 0);
+        assert_eq!(empty.cursor_column(), 0);
+
+        let single = editor("café 日本");
+        assert_eq!(single.line_bounds(), vec![(0, 7)]);
+        assert_eq!(single.cursor_line(), 0);
+        assert_eq!(single.cursor_column(), 7);
+
+        let wide = editor("日本\ncafé");
+        assert_eq!(wide.line_bounds(), vec![(0, 2), (3, 7)]);
+        assert_eq!(wide.cursor_line(), 1);
+        assert_eq!(wide.cursor_column(), 4);
+    }
+
+    #[test]
+    fn line_helpers_assign_each_newline_boundary_to_the_line_it_ends() {
+        let mut trailing = editor("ab\n");
+        assert_eq!(trailing.line_bounds(), vec![(0, 2), (3, 3)]);
+        trailing.cursor = 2;
+        assert_eq!((trailing.cursor_line(), trailing.cursor_column()), (0, 2));
+        trailing.cursor = 3;
+        assert_eq!((trailing.cursor_line(), trailing.cursor_column()), (1, 0));
+
+        let mut consecutive = editor("a\n\n界");
+        assert_eq!(consecutive.line_bounds(), vec![(0, 1), (2, 2), (3, 4)]);
+        for (cursor, expected) in [(1, (0, 1)), (2, (1, 0)), (3, (2, 0)), (4, (2, 1))] {
+            consecutive.cursor = cursor;
+            assert_eq!(
+                (consecutive.cursor_line(), consecutive.cursor_column()),
+                expected,
+                "cursor {cursor}"
+            );
+        }
+    }
+
+    #[test]
     fn typing_inserts_at_the_cursor() {
         let mut state = EditorState::new(None, Vec::new());
         type_text(&mut state, "find");
@@ -720,6 +927,21 @@ mod tests {
     }
 
     #[test]
+    fn backspace_and_delete_join_lines_at_the_break() {
+        let mut backspace = editor("first\nsecond");
+        backspace.cursor = 6;
+        backspace.apply(key(KeyCode::Backspace));
+        assert_eq!(backspace.buffer(), "firstsecond");
+        assert_eq!(backspace.cursor(), 5);
+
+        let mut delete = editor("first\nsecond");
+        delete.cursor = 5;
+        delete.apply(key(KeyCode::Delete));
+        assert_eq!(delete.buffer(), "firstsecond");
+        assert_eq!(delete.cursor(), 5);
+    }
+
+    #[test]
     fn cursor_movement_clamps_at_both_ends() {
         let mut state = editor("ab");
         for _ in 0..5 {
@@ -730,6 +952,34 @@ mod tests {
             state.apply(key(KeyCode::Right));
         }
         assert_eq!(state.cursor(), 2);
+    }
+
+    #[test]
+    fn horizontal_movement_crosses_line_breaks() {
+        let mut left = editor("first\nsecond");
+        left.cursor = 6;
+        left.apply(key(KeyCode::Left));
+        assert_eq!(left.cursor(), 5);
+        assert_eq!((left.cursor_line(), left.cursor_column()), (0, 5));
+
+        let mut right = editor("first\nsecond");
+        right.cursor = 5;
+        right.apply(key(KeyCode::Right));
+        assert_eq!(right.cursor(), 6);
+        assert_eq!((right.cursor_line(), right.cursor_column()), (1, 0));
+    }
+
+    #[test]
+    fn vertical_movement_preserves_character_column_and_clamps() {
+        let mut state = editor("abcdefgh\n日本語abcdef\nxy");
+        state.cursor = 9 + 6;
+        state.apply(key(KeyCode::Up));
+        assert_eq!((state.cursor_line(), state.cursor_column()), (0, 6));
+
+        state.apply(key(KeyCode::Down));
+        assert_eq!((state.cursor_line(), state.cursor_column()), (1, 6));
+        state.apply(key(KeyCode::Down));
+        assert_eq!((state.cursor_line(), state.cursor_column()), (2, 2));
     }
 
     #[test]
@@ -748,6 +998,21 @@ mod tests {
         assert_eq!(state.cursor(), 0);
         state.apply(ctrl('e'));
         assert_eq!(state.cursor(), 16);
+    }
+
+    #[test]
+    fn home_end_ctrl_a_and_ctrl_e_are_line_relative() {
+        for (home, end) in [
+            (key(KeyCode::Home), key(KeyCode::End)),
+            (ctrl('a'), ctrl('e')),
+        ] {
+            let mut state = editor("first\nsecond\nthird");
+            state.cursor = 9;
+            state.apply(home);
+            assert_eq!(state.cursor(), 6, "line two starts after the first break");
+            state.apply(end);
+            assert_eq!(state.cursor(), 12, "line two ends before the next break");
+        }
     }
 
     #[test]
@@ -772,6 +1037,28 @@ mod tests {
         state.apply(ctrl('u'));
         assert_eq!(state.buffer(), " json files");
         assert_eq!(state.cursor(), 0);
+    }
+
+    #[test]
+    fn ctrl_k_and_ctrl_u_only_change_the_current_line() {
+        let original = "first\nsecond middle\nthird";
+
+        let mut kill_end = editor(original);
+        kill_end.cursor = 9;
+        kill_end.apply(ctrl('k'));
+        assert_eq!(kill_end.buffer(), "first\nsec\nthird");
+        assert_eq!(kill_end.cursor(), 9);
+
+        let mut kill_start = editor(original);
+        kill_start.cursor = 9;
+        kill_start.apply(ctrl('u'));
+        assert_eq!(kill_start.buffer(), "first\nond middle\nthird");
+        assert_eq!(kill_start.cursor(), 6);
+
+        assert!(kill_end.buffer().starts_with("first\n"));
+        assert!(kill_end.buffer().ends_with("\nthird"));
+        assert!(kill_start.buffer().starts_with("first\n"));
+        assert!(kill_start.buffer().ends_with("\nthird"));
     }
 
     #[test]
@@ -805,6 +1092,25 @@ mod tests {
     fn enter_on_a_whitespace_only_buffer_keeps_the_editor_open() {
         let mut state = editor("   \t ");
         assert_eq!(state.apply(key(KeyCode::Enter)), EditorAction::Continue);
+    }
+
+    #[test]
+    fn enter_submits_the_whole_multiline_buffer_from_any_line() {
+        let mut state = editor("first\nsecond\nthird");
+        state.cursor = 2;
+        assert_eq!(
+            state.apply(key(KeyCode::Enter)),
+            EditorAction::Finish(EditorOutcome::Submitted(
+                "first\nsecond\nthird".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn enter_on_multiline_whitespace_keeps_the_editor_open() {
+        let mut state = editor(" \n\n  \t\n");
+        assert_eq!(state.apply(key(KeyCode::Enter)), EditorAction::Continue);
+        assert_eq!(state.buffer(), " \n\n  \t\n");
     }
 
     #[test]
@@ -873,6 +1179,60 @@ mod tests {
         assert_eq!(display_width("日本語"), 6);
         assert_eq!(display_width("café"), 4);
         assert_eq!(display_width("日本語 files"), 12);
+        assert_eq!(
+            display_width(PROMPT_INDICATOR),
+            display_width(CONTINUATION_INDICATOR)
+        );
+    }
+
+    #[test]
+    fn prompt_rows_mark_continuations_and_report_the_cursor() {
+        let mut state = editor("first\n日本a\nthird");
+        state.cursor = 6 + 1;
+        let (rows, cursor) = prompt_rows(&state);
+
+        assert_eq!(
+            rows,
+            vec!["sai> first", "  |  日本a", "  |  third"]
+        );
+        assert_eq!(cursor, (1, 7), "one wide glyph adds two display columns");
+    }
+
+    #[test]
+    fn prompt_row_count_matches_logical_line_count_including_trailing_lines() {
+        for (buffer, expected) in [("", 1), ("one", 1), ("one\ntwo", 2), ("one\ntwo\n", 3)] {
+            assert_eq!(prompt_rows(&editor(buffer)).0.len(), expected, "{buffer:?}");
+        }
+    }
+
+    #[test]
+    fn rendering_caps_tall_prompts_and_keeps_the_cursor_line_visible() {
+        let state = editor("first\nsecond\nthird\nfourth");
+        let mut out = Vec::new();
+        // Two guidance rows leave room for two prompt rows.
+        render_with_height(&state, &mut out, 4).unwrap();
+        let drawn = String::from_utf8(out).unwrap();
+
+        assert!(drawn.contains(TRUNCATION_ROW));
+        assert!(drawn.contains("  |  fourth"));
+        assert!(!drawn.contains("  |  second"));
+    }
+
+    #[test]
+    fn guide_indicator_counts_characters_and_tracks_lines() {
+        let cafe = editor("café");
+        assert_eq!(guide_lines(&cafe)[0], "line 1/1 · 4 chars");
+
+        let wide = editor("日本語");
+        assert_eq!(guide_lines(&wide)[0], "line 1/1 · 3 chars");
+
+        let mut state = editor("one\ntwo");
+        assert_eq!(guide_lines(&state)[0], "line 2/2 · 7 chars");
+        state.apply(key(KeyCode::Up));
+        assert_eq!(guide_lines(&state)[0], "line 1/2 · 7 chars");
+        state.cursor = 4;
+        state.apply(key(KeyCode::Backspace));
+        assert_eq!(guide_lines(&state)[0], "line 1/1 · 6 chars");
     }
 
     #[test]
@@ -985,6 +1345,29 @@ mod tests {
     }
 
     #[test]
+    fn multiline_history_entry_loads_atomically_then_uses_buffer_first_navigation() {
+        let multiline = "one\nsecond\nthird";
+        let mut state = with_history(&[multiline, "previous entry"]);
+
+        state.apply(key(KeyCode::Up));
+        assert_eq!(state.buffer(), multiline);
+        assert_eq!(state.cursor(), multiline.chars().count());
+        assert_eq!((state.cursor_line(), state.cursor_column()), (2, 5));
+
+        state.apply(key(KeyCode::Up));
+        assert_eq!(state.buffer(), multiline);
+        assert_eq!((state.cursor_line(), state.cursor_column()), (1, 5));
+
+        state.apply(key(KeyCode::Up));
+        assert_eq!(state.buffer(), multiline);
+        assert_eq!((state.cursor_line(), state.cursor_column()), (0, 3));
+
+        state.apply(key(KeyCode::Up));
+        assert_eq!(state.buffer(), "previous entry");
+        assert_eq!(state.cursor(), "previous entry".chars().count());
+    }
+
+    #[test]
     fn up_walks_back_and_clamps_at_the_oldest_entry() {
         let mut state = with_history(&["newest", "middle", "oldest"]);
         state.apply(key(KeyCode::Up));
@@ -1026,6 +1409,48 @@ mod tests {
         assert_eq!(state.buffer(), "draft");
         state.apply(key(KeyCode::Down));
         assert_eq!(state.buffer(), "draft");
+    }
+
+    #[test]
+    fn arrows_move_within_multiline_buffers_before_navigating_history() {
+        let mut state = with_history(&["previous prompt"]);
+        type_text(&mut state, "first\nsecond");
+
+        state.apply(key(KeyCode::Up));
+        assert_eq!(state.buffer(), "first\nsecond");
+        assert_eq!((state.cursor_line(), state.cursor_column()), (0, 5));
+
+        state.apply(key(KeyCode::Up));
+        assert_eq!(state.buffer(), "previous prompt");
+
+        let mut downward = with_history(&["previous prompt"]);
+        type_text(&mut downward, "first\nsecond");
+        downward.cursor = 2;
+        downward.apply(key(KeyCode::Down));
+        assert_eq!(downward.buffer(), "first\nsecond");
+        assert_eq!((downward.cursor_line(), downward.cursor_column()), (1, 2));
+    }
+
+    #[test]
+    fn up_on_the_first_line_with_empty_history_is_a_no_op() {
+        let mut state = editor("first\nsecond");
+        state.cursor = 3;
+        let before = (state.buffer().to_string(), state.cursor());
+        state.apply(key(KeyCode::Up));
+        assert_eq!((state.buffer().to_string(), state.cursor()), before);
+    }
+
+    #[test]
+    fn multiline_draft_is_restored_intact_after_history_navigation() {
+        let mut state = with_history(&["previous prompt"]);
+        type_text(&mut state, "first\nsecond");
+        state.cursor = 3;
+
+        state.apply(key(KeyCode::Up));
+        assert_eq!(state.buffer(), "previous prompt");
+        state.apply(key(KeyCode::Down));
+        assert_eq!(state.buffer(), "first\nsecond");
+        assert_eq!(state.cursor(), "first\nsecond".chars().count());
     }
 
     #[test]
@@ -1088,6 +1513,36 @@ mod tests {
         }
         type_text(&mut state, "1GB");
         assert_eq!(state.buffer(), "find files larger than 1GB");
+    }
+
+    #[test]
+    fn reverse_search_matches_and_accepts_a_multiline_entry() {
+        let mut state = with_history(&["first line\nneedle on line two\nthird line"]);
+        state.apply(ctrl('r'));
+        type_text(&mut state, "needle");
+
+        assert_eq!(
+            state.search_match(),
+            Some("first line\nneedle on line two\nthird line")
+        );
+        assert_eq!(state.buffer(), "first line\nneedle on line two\nthird line");
+        state.apply(key(KeyCode::Enter));
+        assert!(!state.is_searching());
+        assert_eq!(state.buffer(), "first line\nneedle on line two\nthird line");
+        assert_eq!(state.cursor(), state.buffer().chars().count());
+    }
+
+    #[test]
+    fn reverse_search_previews_multiline_matches_on_one_visible_row() {
+        let mut state = with_history(&["first\nsecond\nthird"]);
+        state.apply(ctrl('r'));
+        type_text(&mut state, "second");
+
+        let (rows, cursor) = prompt_rows(&state);
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].contains("first ↵ second ↵ third"));
+        assert!(!rows[0].contains('\n'));
+        assert_eq!(cursor.0, 0);
     }
 
     #[test]
@@ -1160,7 +1615,7 @@ mod tests {
     fn the_hint_line_names_the_essential_keys() {
         let state = EditorState::new(None, Vec::new());
         let hint = state.hint();
-        for key in ["history", "^R", "Enter", "Esc", "^G"] {
+        for key in ["history", "^R", "Alt+Enter", "Enter", "Esc", "^G"] {
             assert!(hint.contains(key), "hint should mention {}: {}", key, hint);
         }
     }
@@ -1213,7 +1668,10 @@ mod tests {
     #[test]
     fn the_key_panel_covers_every_binding_the_editor_implements() {
         let panel = HELP_LINES.join(" ");
-        for binding in ["^A", "^E", "^K", "^U", "^L", "^R", "Home/End", "Enter", "Esc"] {
+        for binding in [
+            "\u{2190}", "\u{2192}", "\u{2191}", "\u{2193}", "^A", "^E", "^K", "^U", "^L", "^R",
+            "Home/End", "Alt+Enter", "Enter", "Esc",
+        ] {
             assert!(
                 panel.contains(binding),
                 "the key panel should document {}",
@@ -1282,6 +1740,30 @@ mod tests {
     }
 
     #[test]
+    fn render_reserves_the_prompt_area_before_saving_its_anchor() {
+        let state = EditorState::new(None, Vec::new());
+        let mut out = Vec::new();
+        render_with_height(&state, &mut out, 24).unwrap();
+        let text = String::from_utf8(out).unwrap();
+
+        let save = text
+            .find("\u{1b}7")
+            .expect("render should save its scroll-adjusted top-row anchor");
+        let before_save = &text[..save];
+        let area_rows = prompt_rows(&state).0.len() + guide_lines(&state).len();
+
+        assert_eq!(
+            before_save.matches("\r\n").count(),
+            area_rows - 1,
+            "all rows below the prompt must be reserved before the anchor is saved"
+        );
+        assert!(
+            !before_save.contains(PROMPT_INDICATOR),
+            "prompt drawing must begin only after reservation and anchor save"
+        );
+    }
+
+    #[test]
     fn repeated_renders_do_not_drift_up_the_screen() {
         // Typing is a render per keystroke; drift accumulates one row each.
         let mut state = EditorState::new(None, Vec::new());
@@ -1296,6 +1778,15 @@ mod tests {
             total, 0,
             "16 keystrokes drifted {} rows; the prompt must stay anchored",
             total
+        );
+
+        let state = editor("first\nsecond\nthird");
+        let mut out = Vec::new();
+        render(&state, &mut out).unwrap();
+        assert_eq!(
+            net_vertical_displacement(&out),
+            0,
+            "drawing a multi-row prompt must return to its saved anchor before parking"
         );
     }
 
@@ -1340,16 +1831,23 @@ mod tests {
     }
 
     #[test]
-    fn alt_enter_is_reserved_and_does_not_submit() {
+    fn alt_enter_inserts_a_line_break_without_submitting() {
         let mut state = editor("find large files");
         let action = state.apply(KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT));
         assert_eq!(action, EditorAction::Continue, "Alt+Enter must not submit");
-        assert_eq!(state.buffer(), "find large files");
+        assert_eq!(state.buffer(), "find large files\n");
+        assert_eq!((state.cursor_line(), state.cursor_column()), (1, 0));
+
+        let mut split = editor("find rust files changed this week");
+        split.cursor = "find rust files".chars().count();
+        split.apply(KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT));
+        assert_eq!(split.buffer(), "find rust files\n changed this week");
+        assert_eq!((split.cursor_line(), split.cursor_column()), (1, 0));
 
         // Plain Enter still submits.
         assert_eq!(
             state.apply(key(KeyCode::Enter)),
-            EditorAction::Finish(EditorOutcome::Submitted("find large files".to_string()))
+            EditorAction::Finish(EditorOutcome::Submitted("find large files\n".to_string()))
         );
     }
 }

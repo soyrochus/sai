@@ -14,10 +14,10 @@ A submitted prompt containing line breaks SHALL be recorded in the prompt-histor
 - **WHEN** the user recalls a stored three-line prompt with Up
 - **THEN** the editor buffer holds all three lines, the prompt area draws three rows, and the cursor is at the end of the last line
 
-#### Scenario: A multi-line entry counts as one
+#### Scenario: A multi-line entry is recalled as one entry
 
 - **WHEN** the user presses Up once with a three-line prompt as the most recent entry
-- **THEN** the whole three-line prompt is loaded, and a second Up moves to the entry before it rather than to another line of the same entry
+- **THEN** the whole three-line prompt is loaded in one operation with the cursor at its end; subsequent Up presses move through its lines, and only an Up press from its first line loads the entry before it
 
 #### Scenario: Reverse search matches across the whole entry
 

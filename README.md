@@ -252,23 +252,24 @@ retyping them:
 
 | Key                     | Action                                        |
 | ----------------------- | --------------------------------------------- |
-| Left / Right            | Move the cursor                               |
-| Home / End              | Jump to start / end of line                   |
+| Left / Right            | Move across characters and line breaks       |
+| Up / Down               | Move lines; navigate history at buffer edges  |
+| Home / End              | Jump to current line start / end              |
 | Backspace / Delete      | Remove a character                            |
-| `Ctrl+A` / `Ctrl+E`     | Jump to start / end of line                   |
-| `Ctrl+K` / `Ctrl+U`     | Delete to end / start of line                 |
+| `Ctrl+A` / `Ctrl+E`     | Jump to current line start / end              |
+| `Ctrl+K` / `Ctrl+U`     | Delete within the current line                |
 | `Ctrl+L`                | Clear and redraw the prompt area              |
-| Up / Down               | Walk through prior prompts, newest first      |
 | `Ctrl+R`                | Reverse search; press again for older matches |
 | `Ctrl+G`                | Show / hide the full key list                 |
+| `Alt+Enter`             | Insert a line break                           |
 | Enter                   | Submit the prompt                             |
 | Esc / `Ctrl+C`          | Cancel without generating anything            |
 
 A hint line under the prompt names the essential keys, and `Ctrl+G` expands the
 full list in place. Recalled prompts are fully editable before submission.
 
-`Alt+Enter` is reserved: it does nothing today, and will insert a line break once
-multi-line composition lands, so Enter keeps meaning "send".
+`Alt+Enter` inserts line breaks; Enter submits the entire composition as one
+prompt. Multi-line prompts retain their line structure in prompt history.
 
 Controlling the mode:
 
