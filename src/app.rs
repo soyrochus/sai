@@ -1,19 +1,19 @@
-use crate::cli::{resolve_prompt_config_path, resolve_prompt_source, Cli, PromptSource};
+use crate::cli::{Cli, PromptSource, resolve_prompt_config_path, resolve_prompt_source};
 use crate::config::{
     find_global_config_path, load_global_config, load_prompt_config, resolve_ai_config,
 };
+use crate::editor;
 use crate::executor::{CommandExecutor, ShellCommandExecutor};
 use crate::help;
 use crate::history::{self, HistoryEntry};
 use crate::llm::{ChatClient, CommandGenerator, HttpCommandGenerator};
 use crate::ops;
-use crate::editor;
 use crate::peek::build_peek_context;
-use crate::prompt_history;
 use crate::prompt::build_system_prompt;
+use crate::prompt_history;
 use crate::safety::{risk_markers, validate_and_split_command};
 use crate::safety_mode::SafetyMode;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use std::env;
 use std::io::{self, BufRead, IsTerminal, Write};
@@ -287,8 +287,7 @@ where
     let tool_requires_explain = crate::prompt::should_force_explain(&prompt_cfg.tools, &cmd_line);
     // Under an unrestricted run these are true unconditionally: no flag, config
     // value or per-tool setting is consulted, so nothing can suppress them.
-    let effective_explain =
-        safety_mode.forces_inspection() || cli.explain || tool_requires_explain;
+    let effective_explain = safety_mode.forces_inspection() || cli.explain || tool_requires_explain;
     let effective_confirm =
         safety_mode.forces_inspection() || cli.confirm || cli.unsafe_mode || effective_explain;
 
@@ -972,14 +971,23 @@ default_prompt:
     #[test]
     fn a_bare_y_does_not_execute() {
         let (summary, ran) = run_unrestricted(b"y\n");
-        assert!(!ran, "a bare 'y' must not clear the unrestricted confirmation");
+        assert!(
+            !ran,
+            "a bare 'y' must not clear the unrestricted confirmation"
+        );
         assert_eq!(summary.notes.as_deref(), Some("cancelled"));
         assert_eq!(summary.exit_code, 0);
     }
 
     #[test]
     fn other_answers_do_not_execute() {
-        for answer in [&b"n\n"[..], &b"\n"[..], &b"yep\n"[..], &b"YES please\n"[..], &b""[..]] {
+        for answer in [
+            &b"n\n"[..],
+            &b"\n"[..],
+            &b"yep\n"[..],
+            &b"YES please\n"[..],
+            &b""[..],
+        ] {
             let (_, ran) = run_unrestricted(answer);
             assert!(!ran, "answer {:?} must not execute", answer);
         }
@@ -1031,6 +1039,9 @@ default_prompt:
         let mut reader = Cursor::new(b"y\n".to_vec());
         run_with_reader(cli, &generator, &executor, &mut reader).unwrap();
 
-        assert!(executor.ran(), "a bare 'y' must still clear an ordinary confirmation");
+        assert!(
+            executor.ran(),
+            "a bare 'y' must still clear an ordinary confirmation"
+        );
     }
 }

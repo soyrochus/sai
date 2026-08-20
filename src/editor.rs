@@ -6,7 +6,7 @@
 //! `KeyEvent`s directly. The terminal driver sits in `driver.rs`-style code at
 //! the bottom of this module and only renders what the state reports.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::style::{Color, ResetColor, SetForegroundColor};
 use crossterm::terminal::ClearType;
@@ -412,9 +412,7 @@ impl EditorState {
             KeyCode::Down if self.cursor_line() + 1 < self.line_bounds().len() => self.move_down(),
             KeyCode::Down => self.history_next(),
             KeyCode::Esc => return EditorAction::Finish(EditorOutcome::Cancelled),
-            KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {
-                self.insert_char('\n')
-            }
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => self.insert_char('\n'),
             KeyCode::Enter => {
                 // An empty or whitespace-only buffer is not submittable; stay open.
                 if self.buffer.trim().is_empty() {
@@ -516,11 +514,7 @@ fn char_width(ch: char) -> usize {
         | 0x1F900..=0x1F9FF
         | 0x20000..=0x3FFFD
     );
-    if wide {
-        2
-    } else {
-        1
-    }
+    if wide { 2 } else { 1 }
 }
 
 /// The expanded key-binding panel shown by Ctrl+G.
@@ -562,7 +556,11 @@ fn prompt_rows(state: &EditorState) -> (Vec<String>, (usize, usize)) {
         .collect();
 
     let cursor_row = state.cursor_line();
-    let cursor_line = state.buffer().split('\n').nth(cursor_row).unwrap_or_default();
+    let cursor_line = state
+        .buffer()
+        .split('\n')
+        .nth(cursor_row)
+        .unwrap_or_default();
     let before: String = cursor_line.chars().take(state.cursor_column()).collect();
     let cursor_column = display_width(PROMPT_INDICATOR) + display_width(&before);
     (rows, (cursor_row, cursor_column))
@@ -1101,9 +1099,7 @@ mod tests {
         state.cursor = 2;
         assert_eq!(
             state.apply(key(KeyCode::Enter)),
-            EditorAction::Finish(EditorOutcome::Submitted(
-                "first\nsecond\nthird".to_string()
-            ))
+            EditorAction::Finish(EditorOutcome::Submitted("first\nsecond\nthird".to_string()))
         );
     }
 
@@ -1192,10 +1188,7 @@ mod tests {
         state.cursor = 6 + 1;
         let (rows, cursor) = prompt_rows(&state);
 
-        assert_eq!(
-            rows,
-            vec!["sai> first", "  |  日本a", "  |  third"]
-        );
+        assert_eq!(rows, vec!["sai> first", "  |  日本a", "  |  third"]);
         assert_eq!(cursor, (1, 7), "one wide glyph adds two display columns");
     }
 
@@ -1294,7 +1287,10 @@ mod tests {
         keys.extend("ls".chars().map(|ch| key(KeyCode::Char(ch))));
         keys.push(key(KeyCode::Enter));
 
-        assert_eq!(drive(None, &[], keys), EditorOutcome::Submitted("ls".to_string()));
+        assert_eq!(
+            drive(None, &[], keys),
+            EditorOutcome::Submitted("ls".to_string())
+        );
     }
 
     #[test]
@@ -1328,7 +1324,10 @@ mod tests {
             KeyEventKind::Release,
         );
         let keys = vec![press, release, key(KeyCode::Enter)];
-        assert_eq!(drive(None, &[], keys), EditorOutcome::Submitted("x".to_string()));
+        assert_eq!(
+            drive(None, &[], keys),
+            EditorOutcome::Submitted("x".to_string())
+        );
     }
 
     // --- History navigation -------------------------------------------------
@@ -1626,8 +1625,16 @@ mod tests {
         let mut state = with_history(&["find large files"]);
         state.apply(ctrl('r'));
         let hint = state.hint();
-        assert!(hint.contains("next match"), "search hint should say what ^R does now: {}", hint);
-        assert!(hint.contains("accept"), "search hint should say how to accept: {}", hint);
+        assert!(
+            hint.contains("next match"),
+            "search hint should say what ^R does now: {}",
+            hint
+        );
+        assert!(
+            hint.contains("accept"),
+            "search hint should say how to accept: {}",
+            hint
+        );
     }
 
     #[test]

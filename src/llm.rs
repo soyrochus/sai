@@ -1,6 +1,6 @@
 use crate::config::{EffectiveAiConfig, OpenAiApiMode};
 use crate::scope::build_scope_dot_listing;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use reqwest::blocking::Client;
 use reqwest::blocking::Response;
 use serde::{Deserialize, Serialize};

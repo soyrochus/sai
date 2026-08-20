@@ -215,9 +215,12 @@ mod tests {
         // Exactly the shape older builds wrote: no `unrestricted` key at all.
         let legacy = r#"{"ts":"2024-01-01T00:00:00Z","cwd":"/tmp","argv":["sai"],"exit_code":0,"generated_command":"echo hi","unsafe_mode":false,"confirm":true,"explain":false,"scope":null,"peek_files":[],"notes":null}"#;
 
-        let entry: HistoryEntry = serde_json::from_str(legacy)
-            .expect("older history entries must remain readable");
-        assert!(!entry.unrestricted, "an absent field reads as not unrestricted");
+        let entry: HistoryEntry =
+            serde_json::from_str(legacy).expect("older history entries must remain readable");
+        assert!(
+            !entry.unrestricted,
+            "an absent field reads as not unrestricted"
+        );
         assert_eq!(entry.generated_command.as_deref(), Some("echo hi"));
     }
 

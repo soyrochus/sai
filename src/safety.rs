@@ -1,5 +1,5 @@
 use crate::safety_mode::SafetyMode;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 
 pub fn validate_and_split_command(
     cmd_line: &str,
@@ -293,8 +293,12 @@ mod tests {
 
     #[test]
     fn allows_safe_command() {
-        let tokens =
-            validate_and_split_command("jq '.foo' file.json", &["jq".to_string()], SafetyMode::Default).unwrap();
+        let tokens = validate_and_split_command(
+            "jq '.foo' file.json",
+            &["jq".to_string()],
+            SafetyMode::Default,
+        )
+        .unwrap();
         assert_eq!(tokens[0], "jq");
     }
 
@@ -313,7 +317,8 @@ mod tests {
         }
 
         let tokens =
-            validate_and_split_command("ripgrep foo", &allowed(), SafetyMode::Unrestricted).unwrap();
+            validate_and_split_command("ripgrep foo", &allowed(), SafetyMode::Unrestricted)
+                .unwrap();
         assert_eq!(tokens[0], "ripgrep");
     }
 
@@ -328,8 +333,9 @@ mod tests {
 
     #[test]
     fn operators_are_rejected_in_default_mode() {
-        let err = validate_and_split_command("jq '.a' f.json > out.txt", &allowed(), SafetyMode::Default)
-            .expect_err("default mode blocks redirection");
+        let err =
+            validate_and_split_command("jq '.a' f.json > out.txt", &allowed(), SafetyMode::Default)
+                .expect_err("default mode blocks redirection");
         assert!(err.to_string().contains("Disallowed shell operator"));
     }
 
@@ -368,7 +374,10 @@ mod tests {
             SafetyMode::Unsafe,
             SafetyMode::Unrestricted,
         ] {
-            assert!(validate_and_split_command("   ", &allowed(), mode).is_err(), "{mode:?}");
+            assert!(
+                validate_and_split_command("   ", &allowed(), mode).is_err(),
+                "{mode:?}"
+            );
         }
     }
 
@@ -432,7 +441,12 @@ mod tests {
 
     #[test]
     fn non_destructive_commands_are_not_marked_destructive() {
-        for cmd in ["ls -la", "find . -name '*.rs'", "jq '.a' f.json", "grep -rn fn src"] {
+        for cmd in [
+            "ls -la",
+            "find . -name '*.rs'",
+            "jq '.a' f.json",
+            "grep -rn fn src",
+        ] {
             assert!(
                 !kinds(cmd).contains(&RiskKind::Destructive),
                 "should not mark: {}",

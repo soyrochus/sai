@@ -213,7 +213,11 @@ mod tests {
 
     #[test]
     fn prompt_config_flag_makes_positional_the_prompt() {
-        let cli = parse(&["--prompt-config", "jq-prompt.yaml", "count records per file"]);
+        let cli = parse(&[
+            "--prompt-config",
+            "jq-prompt.yaml",
+            "count records per file",
+        ]);
         assert_eq!(
             resolve_prompt_source(&cli, true),
             PromptSource::Argument("count records per file".to_string())
@@ -356,7 +360,13 @@ mod unrestricted_tests {
     #[test]
     fn no_flag_can_suppress_inspection() {
         // There is deliberately no --no-explain / --no-confirm to find.
-        let rendered = format!("{:?}", Cli::command().get_arguments().map(|a| a.get_id().as_str()).collect::<Vec<_>>());
+        let rendered = format!(
+            "{:?}",
+            Cli::command()
+                .get_arguments()
+                .map(|a| a.get_id().as_str())
+                .collect::<Vec<_>>()
+        );
         for suppressor in ["no_explain", "no_confirm", "quiet", "yes"] {
             assert!(
                 !rendered.contains(suppressor),

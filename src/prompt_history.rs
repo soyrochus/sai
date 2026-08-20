@@ -234,7 +234,11 @@ mod tests {
 
         assert_eq!(load(), vec![prompt.to_string()]);
         let stored = fs::read_to_string(prompt_history_path()).unwrap();
-        assert_eq!(stored.lines().count(), 1, "one prompt must occupy one NDJSON record");
+        assert_eq!(
+            stored.lines().count(),
+            1,
+            "one prompt must occupy one NDJSON record"
+        );
         assert!(stored.contains("first line\\nsecond line\\nthird line"));
     }
 

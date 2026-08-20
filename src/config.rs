@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use dirs::config_dir;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -331,9 +331,10 @@ mod tests {
             env::set_var("SAI_PROVIDER", "azure");
         }
         let cfg = resolve_ai_config(None).unwrap_err();
-        assert!(cfg
-            .to_string()
-            .contains("Azure selected but no AZURE API key configured"));
+        assert!(
+            cfg.to_string()
+                .contains("Azure selected but no AZURE API key configured")
+        );
         unsafe {
             env::remove_var("SAI_PROVIDER");
         }
@@ -465,8 +466,9 @@ config: "safe"
         }))
         .unwrap_err();
 
-        assert!(err
-            .to_string()
-            .contains("Unsupported OpenAI API mode 'legacy'"));
+        assert!(
+            err.to_string()
+                .contains("Unsupported OpenAI API mode 'legacy'")
+        );
     }
 }

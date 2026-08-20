@@ -113,7 +113,10 @@ mod tests {
     fn unrestricted_alone_implies_shell_execution_and_no_operator_blocking() {
         // The flag needs no companion: --unrestricted on its own is enough.
         let mode = SafetyMode::from_cli(&cli(false, true));
-        assert!(mode.uses_shell(), "--unrestricted must execute through the shell");
+        assert!(
+            mode.uses_shell(),
+            "--unrestricted must execute through the shell"
+        );
         assert!(
             mode.allows_operators(),
             "--unrestricted must skip operator blocking"

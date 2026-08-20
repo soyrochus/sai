@@ -1,6 +1,6 @@
 use crate::config::{PromptConfig, ToolConfig};
 use crate::safety_mode::SafetyMode;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 pub fn build_system_prompt(
     prompt_cfg: &PromptConfig,

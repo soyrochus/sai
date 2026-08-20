@@ -1,5 +1,5 @@
-use crate::config::{load_global_config, load_prompt_config, PromptConfig, ToolConfig};
-use anyhow::{anyhow, Context, Result};
+use crate::config::{PromptConfig, ToolConfig, load_global_config, load_prompt_config};
+use anyhow::{Context, Result, anyhow};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent},
     terminal::{disable_raw_mode, enable_raw_mode},
@@ -314,7 +314,9 @@ pub fn init_global_config(path: &Path) -> Result<()> {
         .with_context(|| format!("Failed to write default config file to {}", path.display()))?;
 
     println!("Default configuration written to {}", path.display());
-    println!("Update the placeholder API credentials and add tools (e.g. with 'sai --add-prompt ...') before running sai.");
+    println!(
+        "Update the placeholder API credentials and add tools (e.g. with 'sai --add-prompt ...') before running sai."
+    );
 
     Ok(())
 }
@@ -477,9 +479,10 @@ mod tests {
         let mut io = MockIo::new(vec![], false);
         let err =
             resolve_duplicate_tools(&existing, &incoming, "import.yaml", &mut io).unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("interactive resolution is required"));
+        assert!(
+            err.to_string()
+                .contains("interactive resolution is required")
+        );
     }
 
     #[test]
