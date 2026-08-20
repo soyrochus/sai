@@ -467,7 +467,7 @@ where
 
     let (system_prompt, allowed_tools) = build_system_prompt(&prompt_cfg, safety_mode)?;
     let peek_context = build_peek_context(&cli.peek)?;
-    let effective_ai = resolve_ai_config(global_cfg.ai)?;
+    let effective_ai = resolve_ai_config(global_cfg.ai.clone())?;
 
     let cmd_line = generator
         .generate(
@@ -563,10 +563,12 @@ where
                 &cmd_line,
                 tokens,
                 nl_prompt,
-                safety_mode,
-                &prompt_cfg.tools,
-                prompt_config,
-                &markers,
+                FreezeMetadata {
+                    safety_mode,
+                    tools: &prompt_cfg.tools,
+                    prompt_config,
+                    risk_markers: &markers,
+                },
             ),
             &global_cfg,
             &global_config_path,
@@ -582,15 +584,19 @@ where
     Ok(summary)
 }
 
+struct FreezeMetadata<'a> {
+    safety_mode: SafetyMode,
+    tools: &'a [crate::config::ToolConfig],
+    prompt_config: String,
+    risk_markers: &'a [RiskMarker],
+}
+
 fn command_from_parts(
     name: &str,
     command: &str,
     tokens: Vec<String>,
     intent: String,
-    mode: SafetyMode,
-    tools: &[crate::config::ToolConfig],
-    prompt_config: String,
-    markers: &[RiskMarker],
+    metadata: FreezeMetadata<'_>,
 ) -> FrozenCommand {
     FrozenCommand {
         name: name.into(),
@@ -598,10 +604,11 @@ fn command_from_parts(
         tokens,
         intent,
         frozen_at: history::now_iso_ts(),
-        safety_mode: mode,
-        tools: tools.iter().map(|t| t.name.clone()).collect(),
-        prompt_config,
-        risk_markers: markers
+        safety_mode: metadata.safety_mode,
+        tools: metadata.tools.iter().map(|t| t.name.clone()).collect(),
+        prompt_config: metadata.prompt_config,
+        risk_markers: metadata
+            .risk_markers
             .iter()
             .map(|m| format!("[{}] {}", m.kind.label(), m.detail))
             .collect(),
@@ -654,10 +661,12 @@ fn freeze_latest<R: BufRead, W: Write>(
         &command,
         tokens,
         prompt,
-        mode,
-        &[],
-        config_path.display().to_string(),
-        &markers,
+        FreezeMetadata {
+            safety_mode: mode,
+            tools: &[],
+            prompt_config: config_path.display().to_string(),
+            risk_markers: &markers,
+        },
     );
     freeze(frozen, cfg, config_path, reader, output)?;
     let mut s = RunSummary::from_cli(cli);
@@ -681,14 +690,14 @@ fn freeze<R: BufRead, W: Write>(
         ));
     }
     let target = commands_dir(cfg).join(&frozen.name);
-    if !target.exists() {
-        if let Some(path) = ops::program_on_path(&frozen.name) {
-            return Err(anyhow!(
-                "Cannot freeze '{}': it already resolves on PATH to {}",
-                frozen.name,
-                path.display()
-            ));
-        }
+    if !target.exists()
+        && let Some(path) = ops::program_on_path(&frozen.name)
+    {
+        return Err(anyhow!(
+            "Cannot freeze '{}': it already resolves on PATH to {}",
+            frozen.name,
+            path.display()
+        ));
     }
     if target.exists() {
         write!(
@@ -883,7 +892,7 @@ mod tests {
     use crate::config::set_config_dir_override_for_tests;
     use crate::llm::{ChatClient, CommandGenerator};
     use crate::safety::RiskKind;
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
     use std::fs;
     use std::io::Cursor;
     use std::path::Path;
@@ -924,6 +933,55 @@ mod tests {
             _user_prompt: &str,
             _temperature: f32,
         ) -> Result<String> {
+            Ok(self.response.clone())
+        }
+    }
+
+    struct CapturingGenerator {
+        command: String,
+        response: String,
+        generated_prompts: RefCell<Vec<String>>,
+        response_prompts: RefCell<Vec<String>>,
+    }
+
+    impl CapturingGenerator {
+        fn new(command: &str, response: &str) -> Self {
+            Self {
+                command: command.into(),
+                response: response.into(),
+                generated_prompts: RefCell::new(Vec::new()),
+                response_prompts: RefCell::new(Vec::new()),
+            }
+        }
+    }
+
+    impl CommandGenerator for CapturingGenerator {
+        fn generate(
+            &self,
+            _ai: &crate::config::EffectiveAiConfig,
+            _system_prompt: &str,
+            nl_prompt: &str,
+            _scope_hint: Option<&str>,
+            _peek_text: Option<&str>,
+        ) -> Result<String> {
+            self.generated_prompts
+                .borrow_mut()
+                .push(nl_prompt.to_string());
+            Ok(self.command.clone())
+        }
+    }
+
+    impl ChatClient for CapturingGenerator {
+        fn respond(
+            &self,
+            _ai: &crate::config::EffectiveAiConfig,
+            _system_prompt: &str,
+            user_prompt: &str,
+            _temperature: f32,
+        ) -> Result<String> {
+            self.response_prompts
+                .borrow_mut()
+                .push(user_prompt.to_string());
             Ok(self.response.clone())
         }
     }
@@ -1045,6 +1103,75 @@ default_prompt:
       force_explain: true
 "#;
         fs::write(dir.join("config.yaml"), cfg).unwrap();
+    }
+
+    fn frozen_command(name: &str, mode: SafetyMode) -> FrozenCommand {
+        FrozenCommand {
+            name: name.into(),
+            command: "echo hello".into(),
+            tokens: vec!["echo".into(), "hello".into()],
+            intent: "say hello".into(),
+            frozen_at: "2026-01-01T00:00:00Z".into(),
+            safety_mode: mode,
+            tools: vec!["echo".into()],
+            prompt_config: "global".into(),
+            risk_markers: vec![],
+        }
+    }
+
+    fn directory_snapshot(dir: &Path) -> Vec<(String, Vec<u8>)> {
+        if !dir.exists() {
+            return Vec::new();
+        }
+        let mut entries = fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                (
+                    entry.file_name().to_string_lossy().into_owned(),
+                    fs::read(entry.path()).unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        entries
+    }
+
+    fn script_header(text: &str, key: &str) -> String {
+        let prefix = format!("# sai:{key}=");
+        let encoded = text
+            .lines()
+            .find_map(|line| line.strip_prefix(&prefix))
+            .unwrap();
+        serde_json::from_str(encoded).unwrap()
+    }
+
+    struct ExpectedScript<'a> {
+        intent: &'a str,
+        frozen_at: &'a str,
+        safety: &'a str,
+        tools: &'a str,
+        prompt_config: &'a str,
+        risk_markers: &'a str,
+        command: &'a str,
+        body: &'a str,
+    }
+
+    impl ExpectedScript<'_> {
+        fn render(&self) -> String {
+            let header = |value: &str| serde_json::to_string(value).unwrap();
+            format!(
+                "#!/usr/bin/env bash\n# sai:intent={}\n# sai:frozen-at={}\n# sai:safety={}\n# sai:tools={}\n# sai:prompt-config={}\n# sai:risk-markers={}\n# sai:command={}\nset -euo pipefail\n{}\n",
+                header(self.intent),
+                header(self.frozen_at),
+                header(self.safety),
+                header(self.tools),
+                header(self.prompt_config),
+                header(self.risk_markers),
+                header(self.command),
+                self.body
+            )
+        }
     }
 
     fn run_with_output(cli: Cli, input: &[u8], command: &str) -> (RunSummary, bool, String) {
@@ -1532,6 +1659,427 @@ default_prompt:
         assert_eq!(summary.exit_code, 2);
         assert!(!summary.confirm);
         assert!(!executor.ran());
+    }
+
+    #[test]
+    fn analyze_receives_the_prompt_from_an_editor_shaped_history_entry() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+        history::write_entry(HistoryEntry {
+            ts: "2026-01-01T00:00:00Z".into(),
+            cwd: "/work".into(),
+            // An editor-composed invocation has no prompt text in argv.
+            argv: vec!["sai".into()],
+            exit_code: 0,
+            generated_command: Some("echo hello".into()),
+            prompt: Some("editor composed\nmulti-line intent".into()),
+            unsafe_mode: false,
+            unrestricted: false,
+            confirm: false,
+            explain: false,
+            scope: None,
+            peek_files: vec![],
+            notes: None,
+        })
+        .unwrap();
+
+        let generator = CapturingGenerator::new("unused", "analysis");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(Vec::<u8>::new());
+        let summary = run_with_reader(
+            Cli {
+                analyze: true,
+                ..Default::default()
+            },
+            &generator,
+            &executor,
+            &mut reader,
+        )
+        .unwrap();
+
+        assert_eq!(summary.notes.as_deref(), Some("analyze mode"));
+        let prompts = generator.response_prompts.borrow();
+        assert_eq!(prompts.len(), 1);
+        assert!(prompts[0].contains("\"argv\": [\n    \"sai\"\n  ]"));
+        assert!(prompts[0].contains("\"prompt\": \"editor composed\\nmulti-line intent\""));
+        assert!(!executor.ran());
+    }
+
+    #[test]
+    fn init_and_freezing_never_touch_shell_startup_files() {
+        let temp = TempDir::new().unwrap();
+        let fake_home = temp.path().join("home");
+        let config_root = fake_home.join(".config/sai");
+        fs::create_dir_all(&fake_home).unwrap();
+        let startup_names = [
+            format!(".{}{}", "bash", "rc"),
+            format!(".{}{}", "zsh", "rc"),
+            format!(".{}", "profile"),
+            format!(".{}", "zprofile"),
+        ];
+        for name in &startup_names {
+            fs::write(fake_home.join(name), format!("sentinel:{name}")).unwrap();
+        }
+
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        ops::init_global_config(&config_root.join("config.yaml")).unwrap();
+        commands::write(
+            &frozen_command("startup-test-command", SafetyMode::Default),
+            &crate::config::GlobalConfig::default(),
+        )
+        .unwrap();
+
+        for name in &startup_names {
+            assert_eq!(
+                fs::read_to_string(fake_home.join(name)).unwrap(),
+                format!("sentinel:{name}")
+            );
+        }
+
+        // Also guard against future direct access anywhere in the implementation.
+        let source_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        for entry in fs::read_dir(source_dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+                continue;
+            }
+            let source = fs::read_to_string(&path).unwrap();
+            for name in &startup_names {
+                assert!(
+                    !source.contains(name),
+                    "{} directly references shell startup file {name}",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_name_refusal_leaves_the_commands_directory_unchanged() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+        let config_path = config_root.join("config.yaml");
+        let config = load_global_config(&config_path).unwrap();
+        let dir = commands_dir(&config);
+        let before = directory_snapshot(&dir);
+        let mut reader = Cursor::new(Vec::<u8>::new());
+        let mut output = Vec::new();
+
+        let error = freeze(
+            frozen_command("../invalid", SafetyMode::Default),
+            &config,
+            &config_path,
+            &mut reader,
+            &mut output,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("single file name"));
+        assert_eq!(directory_snapshot(&dir), before);
+    }
+
+    #[test]
+    fn unrestricted_freeze_refusal_leaves_the_commands_directory_unchanged() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_config_forbidding_unrestricted(&config_root);
+        let config_path = config_root.join("config.yaml");
+        let config = load_global_config(&config_path).unwrap();
+        let dir = commands_dir(&config);
+        let before = directory_snapshot(&dir);
+        let mut reader = Cursor::new(Vec::<u8>::new());
+        let mut output = Vec::new();
+
+        let error = freeze(
+            frozen_command("forbidden-unrestricted", SafetyMode::Unrestricted),
+            &config,
+            &config_path,
+            &mut reader,
+            &mut output,
+        )
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains(&config_path.display().to_string())
+        );
+        assert_eq!(directory_snapshot(&dir), before);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_shadowing_refusal_leaves_the_commands_directory_unchanged() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+        let config_path = config_root.join("config.yaml");
+        let config = load_global_config(&config_path).unwrap();
+        let dir = commands_dir(&config);
+        let before = directory_snapshot(&dir);
+        let mut reader = Cursor::new(Vec::<u8>::new());
+        let mut output = Vec::new();
+
+        let error = freeze(
+            frozen_command("sh", SafetyMode::Default),
+            &config,
+            &config_path,
+            &mut reader,
+            &mut output,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("already resolves on PATH"));
+        assert_eq!(directory_snapshot(&dir), before);
+    }
+
+    #[test]
+    fn declining_replacement_leaves_the_catalog_byte_identical() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+        let config_path = config_root.join("config.yaml");
+        let config = load_global_config(&config_path).unwrap();
+        let dir = commands_dir(&config);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("existing-command"), b"original bytes").unwrap();
+        let before = directory_snapshot(&dir);
+        let mut reader = Cursor::new(b"n\n".to_vec());
+        let mut output = Vec::new();
+
+        freeze(
+            frozen_command("existing-command", SafetyMode::Default),
+            &config,
+            &config_path,
+            &mut reader,
+            &mut output,
+        )
+        .unwrap();
+
+        assert_eq!(directory_snapshot(&dir), before);
+        assert!(
+            String::from_utf8(output)
+                .unwrap()
+                .contains("Replace existing frozen command")
+        );
+    }
+
+    #[test]
+    fn nothing_to_freeze_refusal_leaves_no_catalog() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+        let config = load_global_config(&config_root.join("config.yaml")).unwrap();
+        let dir = commands_dir(&config);
+        let executor = RecordingExecutor::default();
+        let generator = StubGenerator::new("unused", "unused");
+        let mut reader = Cursor::new(Vec::<u8>::new());
+
+        let error = run_with_reader(
+            Cli {
+                save: Some(vec!["nothing-here".into()]),
+                ..Default::default()
+            },
+            &generator,
+            &executor,
+            &mut reader,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("nothing to freeze"));
+        assert!(directory_snapshot(&dir).is_empty());
+    }
+
+    #[test]
+    fn declining_initial_freeze_review_leaves_no_catalog() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+        let config = load_global_config(&config_root.join("config.yaml")).unwrap();
+        let dir = commands_dir(&config);
+        let generator = StubGenerator::new("echo hello", "unused");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(b"n\n".to_vec());
+
+        let summary = run_with_reader(
+            Cli {
+                save: Some(vec!["declined-command".into(), "say hello".into()]),
+                ..Default::default()
+            },
+            &generator,
+            &executor,
+            &mut reader,
+        )
+        .unwrap();
+
+        assert_eq!(summary.notes.as_deref(), Some("cancelled"));
+        assert!(directory_snapshot(&dir).is_empty());
+    }
+
+    #[test]
+    fn default_mode_can_be_frozen_when_unrestricted_is_forbidden() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_config_forbidding_unrestricted(&config_root);
+        let config = load_global_config(&config_root.join("config.yaml")).unwrap();
+        let generator = StubGenerator::new("echo hello", "unused");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(b"y\n".to_vec());
+
+        run_with_reader(
+            Cli {
+                save: Some(vec!["allowed-default".into(), "say hello".into()]),
+                ..Default::default()
+            },
+            &generator,
+            &executor,
+            &mut reader,
+        )
+        .unwrap();
+
+        let dir = commands_dir(&config);
+        assert!(dir.join("allowed-default").is_file());
+        assert_eq!(directory_snapshot(&dir).len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn generate_and_freeze_round_trip_has_exact_default_and_unsafe_scripts() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+        let config_path = config_root.join("config.yaml");
+        let config = load_global_config(&config_path).unwrap();
+        let executor = RecordingExecutor::default();
+
+        let default_generator = StubGenerator::new("echo hello", "unused");
+        let mut default_reader = Cursor::new(b"y\n".to_vec());
+        run_with_reader(
+            Cli {
+                save: Some(vec!["exact-default".into(), "say hello".into()]),
+                ..Default::default()
+            },
+            &default_generator,
+            &executor,
+            &mut default_reader,
+        )
+        .unwrap();
+        let default_text = fs::read_to_string(commands_dir(&config).join("exact-default")).unwrap();
+        let default_time = script_header(&default_text, "frozen-at");
+        assert_eq!(
+            default_text,
+            ExpectedScript {
+                intent: "say hello",
+                frozen_at: &default_time,
+                safety: "default",
+                tools: "echo",
+                prompt_config: &config_path.display().to_string(),
+                risk_markers: "",
+                command: "echo hello",
+                body: "echo hello",
+            }
+            .render()
+        );
+
+        let unsafe_command = "echo first | echo second";
+        let unsafe_generator = StubGenerator::new(unsafe_command, "unused");
+        let mut unsafe_reader = Cursor::new(b"y\n".to_vec());
+        run_with_reader(
+            Cli {
+                unsafe_mode: true,
+                save: Some(vec!["exact-unsafe".into(), "pipe greetings".into()]),
+                ..Default::default()
+            },
+            &unsafe_generator,
+            &executor,
+            &mut unsafe_reader,
+        )
+        .unwrap();
+        let unsafe_text = fs::read_to_string(commands_dir(&config).join("exact-unsafe")).unwrap();
+        let unsafe_time = script_header(&unsafe_text, "frozen-at");
+        let guarded_body = "read -rp 'This frozen command was marked risky. Continue? [y/N] ' sai_answer\n[[ \"$sai_answer\" == y || \"$sai_answer\" == yes ]] || exit 1\necho first | echo second";
+        assert_eq!(
+            unsafe_text,
+            ExpectedScript {
+                intent: "pipe greetings",
+                frozen_at: &unsafe_time,
+                safety: "unsafe",
+                tools: "echo",
+                prompt_config: &config_path.display().to_string(),
+                risk_markers: "[shell operators] contains |",
+                command: unsafe_command,
+                body: guarded_body,
+            }
+            .render()
+        );
+        assert!(!executor.ran(), "freezing must not execute either command");
+        assert_eq!(directory_snapshot(&commands_dir(&config)).len(), 2);
+    }
+
+    #[test]
+    fn frozen_commands_do_not_change_generation_validation_confirmation_or_execution() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+        let config = load_global_config(&config_root.join("config.yaml")).unwrap();
+        commands::write(&frozen_command("run", SafetyMode::Default), &config).unwrap();
+
+        let generator = CapturingGenerator::new("echo hello", "unused");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(b"y\n".to_vec());
+        let mut output = Vec::new();
+        let summary = run_with_reader_and_confirmation_output(
+            Cli {
+                confirm: true,
+                arg1: Some("run the tests".into()),
+                ..Default::default()
+            },
+            &generator,
+            &executor,
+            &mut reader,
+            &mut output,
+        )
+        .unwrap();
+
+        assert_eq!(
+            generator.generated_prompts.borrow().as_slice(),
+            ["run the tests"]
+        );
+        assert_eq!(summary.generated_command.as_deref(), Some("echo hello"));
+        assert!(summary.confirm && executor.ran());
+        assert!(
+            String::from_utf8(output)
+                .unwrap()
+                .contains("Execute this command?")
+        );
+
+        let invalid_generator = CapturingGenerator::new("not-configured hello", "unused");
+        let invalid_executor = RecordingExecutor::default();
+        let mut invalid_reader = Cursor::new(Vec::<u8>::new());
+        let error = run_with_reader(
+            Cli {
+                arg1: Some("run the tests".into()),
+                ..Default::default()
+            },
+            &invalid_generator,
+            &invalid_executor,
+            &mut invalid_reader,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("Disallowed command"));
+        assert!(!invalid_executor.ran());
     }
 
     #[test]

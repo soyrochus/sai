@@ -3,7 +3,7 @@
 - [x] 1.1 Add `prompt: Option<String>` to `HistoryEntry` in [src/history.rs](src/history.rs) with `#[serde(default)]`, mirroring how `unrestricted` was added, including a comment explaining why it is defaulted.
 - [x] 1.2 Populate it from the resolved natural-language prompt in `run_with_reader` ([src/app.rs](src/app.rs)), on the same path for argument-supplied and editor-composed prompts alike.
 - [x] 1.3 Test that an entry written without the field still parses and reports no intent, and that a round trip preserves a multi-line prompt.
-- [ ] 1.4 Confirm `--analyze` now sees the prompt for an editor-composed invocation, where it previously saw only `argv`.
+- [x] 1.4 Confirm `--analyze` now sees the prompt for an editor-composed invocation, where it previously saw only `argv`.
 
 ## 2. Commands directory and configuration
 
@@ -11,7 +11,7 @@
 - [x] 2.2 Add a resolver returning the effective commands directory, honouring the test override already used by every storage test.
 - [x] 2.3 Add `--commands-path` to [src/cli.rs](src/cli.rs), printing the directory for use in a `PATH` assignment.
 - [x] 2.4 Print the `export PATH="$(sai --commands-path):$PATH"` line from `--init` in [src/ops.rs](src/ops.rs).
-- [ ] 2.5 Assert in a test that no code path reads or writes a shell startup file.
+- [x] 2.5 Assert in a test that no code path reads or writes a shell startup file.
 - [x] 2.6 Create the directory on first freeze, not at startup, so an installation that never freezes anything is untouched.
 
 ## 3. Script emission
@@ -40,8 +40,8 @@
 - [x] 5.1 Refuse a name that already resolves on `PATH`, naming the conflicting program, reusing the `PATH` walk in [src/ops.rs:352](src/ops.rs#L352) — extract it to a shared helper rather than duplicating it.
 - [x] 5.2 Require explicit confirmation before replacing an existing frozen command, and leave the existing file byte-identical when declined.
 - [x] 5.3 Refuse to freeze a command recorded as generated under unrestricted mode when `safety.allow_unrestricted: false`, naming the configuration file responsible.
-- [ ] 5.4 Order every refusal before the temporary file is created, and test that a refused freeze leaves the directory unchanged.
-- [ ] 5.5 Test each refusal separately, including that freezing a default-mode command is unaffected by `allow_unrestricted: false`.
+- [x] 5.4 Order every refusal before the temporary file is created, and test that a refused freeze leaves the directory unchanged.
+- [x] 5.5 Test each refusal separately, including that freezing a default-mode command is unaffected by `allow_unrestricted: false`.
 
 ## 6. Listing
 
@@ -50,15 +50,15 @@
 - [x] 6.3 Flag a command whose recorded tools are no longer on `PATH`, using the shared helper from 5.1.
 - [x] 6.4 Skip files that are not SAI-emitted scripts, or whose headers do not parse, without breaking the rest of the listing.
 - [x] 6.5 Report an empty or absent directory as "no frozen commands" rather than failing.
-- [ ] 6.6 Test that a hand-edited intent is reflected in the listing, proving the file is the source of truth.
+- [x] 6.6 Test that a hand-edited intent is reflected in the listing, proving the file is the source of truth.
 
 ## 7. End-to-end verification
 
-- [ ] 7.1 Test the full round trip against a temporary config directory: generate, freeze, read the emitted file, and assert its exact text for both a default-mode and an unsafe-mode command.
-- [ ] 7.2 Actually execute an emitted script in a test and assert its output matches what SAI's own executor produced for the same command — the only check that proves the quoting rule preserves semantics rather than merely looking plausible.
-- [ ] 7.3 Include a glob-bearing default-mode command in that comparison.
-- [ ] 7.4 Confirm ordinary generation, safety validation, confirmation and execution are unchanged by the presence of frozen commands, and that `sai run the tests` is still a prompt.
-- [ ] 7.5 Run `cargo test` and `cargo clippy` clean.
+- [x] 7.1 Test the full round trip against a temporary config directory: generate, freeze, read the emitted file, and assert its exact text for both a default-mode and an unsafe-mode command.
+- [x] 7.2 Actually execute an emitted script in a test and assert its output matches what SAI's own executor produced for the same command — the only check that proves the quoting rule preserves semantics rather than merely looking plausible.
+- [x] 7.3 Include a glob-bearing default-mode command in that comparison.
+- [x] 7.4 Confirm ordinary generation, safety validation, confirmation and execution are unchanged by the presence of frozen commands, and that `sai run the tests` is still a prompt.
+- [x] 7.5 Run `cargo test` and `cargo clippy` clean.
 - [ ] 7.6 Manually verify on macOS: freeze a command, add the directory to `PATH`, run it by name, confirm the risk guard prompts for a destructive command, and confirm `--list-commands` flags a tool removed from `PATH`.
 
 ## 8. Documentation

@@ -37,12 +37,15 @@ flowchart TD
     F --> |confirmation required| G[Preflight card + confirmation]
     F --> |no confirmation required| H[Execution]
     G --> H
+    G --> |"--save"| I[Freeze as executable script]
 ```
 
 The prompt is acquired before any model call and recorded in the prompt history
 at submission time, so a prompt that produces an LLM error remains recallable.
 The preflight card and confirmation appear only on runs that require one; a run
-that executes directly is unchanged by their existence.
+that executes directly is unchanged by their existence. Under `--save` the
+confirmed command is written to an executable script instead of being executed;
+every later run of that script leaves this diagram entirely (§11).
 
 
 ## 2.1 Module Layout
@@ -59,10 +62,11 @@ that executes directly is unchanged by their existence.
 - `editor`: the interactive mini editor. `EditorState` is a pure state machine driven by injected `crossterm` key events and never touches the terminal, so every editing, navigation and search behaviour is unit-testable headlessly; the terminal driver at the bottom of the module renders what the state reports.
 - `prompt_history`: NDJSON storage of submitted prompts under the config directory, with rotation, corrupt-line skipping, consecutive-duplicate collapsing, and newest-first loading for editor recall.
 - `executor`: houses the `CommandExecutor` trait and the default `ShellCommandExecutor` that toggles between direct spawning and shell delegation according to `SafetyMode::uses_shell()`.
+- `commands`: emission, parsing, and listing of frozen command scripts. `FrozenCommand::render` and `::parse` are inverse pure functions over the `# sai:` provenance header, so the emitted file is the only storage format; `write` is `#[cfg(unix)]` and performs the atomic temp-file-plus-rename.
 - `history`: implements NDJSON-based invocation logging with automatic rotation, plus latest-entry retrieval for the `--analyze` mode.
-- `ops`: shared helpers for `--init`, `--create-prompt`, `--add-prompt`, and `--list-tools`, including the duplicate-resolution helper used during prompt merges.
+- `ops`: shared helpers for `--init`, `--create-prompt`, `--add-prompt`, and `--list-tools`, including the duplicate-resolution helper used during prompt merges. Its `program_on_path` lookup is shared by the tool-presence report, the frozen-command shadowing refusal, and the staleness flag in `--list-commands`.
 - `scope`: utilities for building scope-aware context (currently the `"."` directory listing helper).
-- `help`: hierarchical help system with 16 topics plus the `topics` index, covering all major features. Provides `try_handle_help()` for early interception of `sai help` commands and `render_help()` for topic-specific content.
+- `help`: hierarchical help system with 17 topics plus the `topics` index, covering all major features. Provides `try_handle_help()` for early interception of `sai help` commands and `render_help()` for topic-specific content.
 
 Each module is testable in isolation, with the traits (`CommandGenerator`, `CommandExecutor`) providing seam points for mocking inside unit tests.
 
@@ -109,7 +113,8 @@ Defines:
 
 Running `sai --init` writes a starter `config.yaml` at the OS location above.  
 The generated file contains placeholder API credentials (e.g., `changeme`) and a curated default tool whitelist sourced from `templates/default-config.yaml` (for example: `rg`, `grep`, `find`, `awk`, `sed`, `wc`).  
-Operators can extend or adjust these defaults with `sai --add-prompt` or direct YAML edits. Existing configs are never overwritten.
+Operators can extend or adjust these defaults with `sai --add-prompt` or direct YAML edits. Existing configs are never overwritten.  
+`--init` also prints the `export PATH="$(sai --commands-path):$PATH"` line for the frozen-command catalog (§11.6). It is printed, never applied: SAI does not modify shell startup files.
 
 ## 3.2 Per-call Prompt Config
 
@@ -173,6 +178,23 @@ When stdin is not a TTY, duplicates raise a clear error instead of defaulting si
 
 `sai --list-tools [prompt.yaml]` prints the tool names sourced from the global default prompt and, when a prompt path is supplied, from that file as well. Each tool entry also indicates whether it is currently discoverable on the operator's `PATH` (`[x]` present, `[ ]` missing).  
 The command is informational only; no LLM call occurs and no shell command is executed.
+
+## 3.4 Command Catalog Location
+
+Frozen commands (§11) are written to a directory resolved by
+`config::commands_dir`:
+
+```yaml
+commands:
+  dir: "/home/you/bin"   # optional
+```
+
+An absolute path is used as-is; a relative path is resolved against the
+configuration root, which keeps a checked-in config portable across machines.
+`~` is not expanded. When the key is absent the catalog is `<config root>/bin`,
+beside `config.yaml`, `history.log` and `prompt_history.log`. The directory is
+created on the first freeze, so an installation that never uses the feature is
+untouched.
 
 ---
 
@@ -370,6 +392,14 @@ safety:
 
 SAI refuses before contacting the model, so a forbidden run costs no tokens and records no command. Unrestricted runs carry a dedicated `unrestricted` field in the history log, so later auditing can tell them apart.
 
+The setting has a second effect: it refuses to **freeze** a command recorded as
+generated under unrestricted mode (§11.6), so a forbidden mode cannot be
+laundered into a permanent artifact by saving it first. Its guarantee is
+correspondingly narrower than it looks. Because a frozen script runs without
+SAI, the setting means *this machine does not produce unwhitelisted commands* —
+not *no such command can ever run here*. This is stated plainly rather than left
+to be discovered.
+
 ## 7.4 Preflight Card and Risk Markers
 
 Every confirmation is preceded by a compact preflight card written to stderr. A run that executes without confirming produces no card and is byte-identical to what it produced before the card existed.
@@ -398,9 +428,11 @@ Markers are **advisory**. They inform the confirmation and neither block nor app
 
 ## 7.5 Confirmation Layer
 
-Confirmation is requested when any of these hold: `--confirm`, `--unsafe`, `--explain`, a tool's `force_explain`, or `--unrestricted`. The card is printed after any explanation and immediately before the prompt, so it is the last thing read before the decision.
+Confirmation is requested when any of these hold: `--confirm`, `--unsafe`, `--explain`, a tool's `force_explain`, or `--unrestricted`. Freezing a command adds a further occasion (§11.1): it is the point at which per-use review stops, so it gets the same card and its own `Freeze this command? [y/N]` prompt before anything is written — including when the command was recovered from an earlier invocation, where the card is built from the recorded entry. The card is printed after any explanation and immediately before the prompt, so it is the last thing read before the decision.
 
 Two confirmation functions exist and stay separate, preserving their different affirmative rules: the ordinary one accepts `y` or `yes`, the unrestricted one requires `yes` in full and is preceded by an explicit statement that no tool whitelist is in effect. That statement is deliberately kept outside the card so a later change to card formatting cannot quietly remove it.
+
+The unrestricted announcement and its typed-`yes` rule are **not** reused for the freeze confirmation. Freezing writes a file; it executes nothing. The `allow_unrestricted` refusal is what governs unrestricted commands there, and it happens before the card is ever built.
 
 Presenting the card changes nothing about execution: not which command runs, not whether it runs, not what is validated, not the history entry, and not the exit code.
 
@@ -433,6 +465,11 @@ The `executor` module defines a `CommandExecutor` trait so alternative execution
 
 This split keeps the "no shell by default" invariant while still enabling power users to opt into shell semantics explicitly.
 
+A frozen command (§11) leaves this path entirely: it is a bash script run by the
+user's shell, with no SAI process involved. The glob-expansion behaviour
+described above is therefore what the emitted script's quoting rule must
+reproduce, which is why §11.4 leaves glob tokens unquoted.
+
 ---
 
 # 10. History and Analysis System
@@ -448,6 +485,7 @@ pub struct HistoryEntry {
     pub argv: Vec<String>,       // full CLI argv as seen by SAI
     pub exit_code: i32,          // process exit code
     pub generated_command: Option<String>, // final shell command, if any
+    pub prompt: Option<String>,  // submitted natural-language prompt (serde default)
     pub unsafe_mode: bool,       // whether operator blocking was relaxed
     pub unrestricted: bool,      // whether the tool whitelist was lifted (serde default)
     pub confirm: bool,           // whether confirmation was requested
@@ -459,6 +497,24 @@ pub struct HistoryEntry {
 ```
 
 `unrestricted` carries `#[serde(default)]` so entries written before the field existed still parse, reading as not unrestricted. Both relaxed modes set `unsafe_mode`, so an audit filtering on it still catches unrestricted runs, while `unrestricted` distinguishes the stronger one.
+
+`prompt` is defaulted the same way and for the same reason. It records the
+submitted natural-language request, which `argv` cannot: for an editor-composed
+prompt `argv` is just `["sai"]`. This is what lets `sai --save` recover the
+intent of a command generated in an earlier invocation (§11.1), and it also
+improves `--analyze`, which previously had to infer the request from `argv`. An
+entry carrying no prompt freezes with its intent recorded as unavailable rather
+than silently omitted.
+
+*Alternative rejected:* correlating `history.log` with `prompt_history.log` by
+timestamp. The pairing is a guess that breaks under concurrent shells, when
+generation failed after the prompt was recorded, and when the user declined at
+the confirmation. A wrong intent in a provenance header is worse than an absent
+one, because it will be trusted.
+
+Note that prompts can carry host names, paths and other environment detail.
+`prompt_history.log` is created owner-only for exactly that reason (§10.3);
+`history.log` is not, which is worth revisiting as a follow-on.
 
 ## 10.2 Log Location and Rotation
 
@@ -529,18 +585,175 @@ Both `--explain` and `--analyze` leverage the same LLM backend but serve differe
 
 ---
 
-# 11. Help System
+# 11. Deterministic Commands
+
+A generated command is normally discarded after it runs. `--save` freezes one
+into a standalone executable script, making the model a **compile-time
+dependency rather than a runtime one**: consulted once to author the command,
+and never again to run it.
+
+## 11.1 Freeze Paths
+
+Two entry points converge on the same writer:
+
+- `sai --save <name>` recovers the most recent entry from `history.log` that
+  carries a `generated_command`, reconstructing the safety mode from the
+  entry's `unsafe_mode` / `unrestricted` flags and the intent from its `prompt`
+  field. Nothing to recover is an error, not a silent no-op.
+- `sai --save <name> "<prompt>"` generates and validates as an ordinary run,
+  then freezes instead of executing. Freezing replaces execution rather than
+  following it, so the command that was reviewed is written, not run.
+
+Both build a `FrozenCommand` through `app::command_from_parts` and hand it to
+`commands::write`. The one-step path records the prompt config's tool list in
+the header; the from-history path has no tool list to recover and records none.
+
+## 11.2 The Script Artifact
+
+`FrozenCommand::render` emits, in order: the `#!/usr/bin/env bash` shebang, one
+`# sai:<field>=<JSON string>` header line per provenance field, `set -euo
+pipefail`, the optional risk guard, and the command.
+
+```bash
+#!/usr/bin/env bash
+# sai:intent="remove build logs older than 30 days"
+# sai:frozen-at="2026-08-20T11:24:07Z"
+# sai:safety="default"
+# sai:tools="find"
+# sai:prompt-config="/home/you/.config/sai/config.yaml"
+# sai:risk-markers=""
+# sai:command="find ./logs -type f -mtime +30 -delete"
+set -euo pipefail
+find ./logs -type f -mtime +30 -delete
+```
+
+Header values are JSON-encoded, so a multi-line intent or an embedded quote
+round-trips through a single comment line. `FrozenCommand::parse` reverses the
+emission and is asserted to round-trip in tests.
+
+The script takes no forwarded arguments. Parameters, composition, and anything
+else that would turn the catalog into a language are deliberately out of scope;
+what the user subsequently edits into their own file is their business.
+
+## 11.3 The Header Is the Data Model
+
+There is no `commands.json`, no index, and no cache. `--list-commands` scans the
+directory, parses each file's header, and reports what it finds.
+
+Two sources of truth would drift the moment a user hand-edits a script — which
+is the entire point of the artifact being a script — and would then owe
+reconciliation rules that parsing the file simply does not have. It also gives a
+property an index cannot: a copied or committed script carries everything about
+itself.
+
+The cost is that listing is O(files) reads rather than one index read, and that
+a mangled header degrades that entry. A file that is not a SAI-emitted script,
+or whose header will not parse, is skipped rather than failing the listing.
+
+## 11.4 Quoting Follows the Frozen Mode
+
+This is the subtlest part of the feature. A frozen script runs under a shell,
+whereas a default-mode command did not, so the emitted text must preserve the
+semantics in force at freeze time rather than the text alone.
+
+- **Shell-executed modes** (`--unsafe`, `--unrestricted`): the command line is
+  emitted verbatim. Its operators are load-bearing and were reviewed as such.
+- **Default mode**: each validated token is passed through
+  `shell_words::quote`, **except** tokens containing `*`, `?` or `[`, which are
+  emitted bare.
+
+The glob exception is not a nicety. Default mode never ran a shell, but the
+executor did glob-expand those arguments itself (§9), so quoting everything
+would break `wc -l src/*` — a command that works today. Leaving glob tokens
+unquoted hands the same expansion to the shell, and bash without `nullglob` has
+the literal-fallback-on-no-match behaviour the `glob` crate has, so the two
+agree. A test emits a script and compares its output against
+`executor::prepare_command` for exactly this case.
+
+*Accepted residual difference:* an unquoted glob token containing whitespace
+would additionally be word-split by the shell. This is pathological in generated
+commands, and covering it would require shell configuration that changes other
+behaviour.
+
+## 11.5 The Risk Guard Is Emitted, Not Enforced
+
+When `safety::risk_markers` is non-empty at freeze time, the script carries a
+`read -rp` prompt that aborts on anything but `y`/`yes`. It is script text like
+any other: visible on `cat`, removable by the user.
+
+This answers "should a frozen command confirm before running?" once, at freeze,
+for exactly the commands that warrant it — rather than gating everything, which
+defeats the purpose, or gating nothing, which leaves a destructive frozen
+command running unguarded. It is also the only run-time protection available,
+since SAI is not there.
+
+## 11.6 Storage, Naming, and Refusals
+
+Scripts live in `config::commands_dir`: `<config root>/bin` by default,
+overridden by the `commands.dir` key (§3.4). The directory is created on first
+freeze. `sai --commands-path` prints it and `sai --init` prints the
+`export PATH=…` line; SAI never reads or writes shell startup files.
+
+Writing is atomic: a same-directory temporary file, `chmod 0700`, then rename
+into place. A partially written executable on `PATH` is a genuinely bad failure
+mode, since the shell would happily run a truncated script.
+
+Every check that matters happens at freeze time, because nothing can happen at
+run time. All refusals are evaluated before the temporary file is created, so a
+refused freeze leaves nothing behind:
+
+| Refusal | Reason |
+| --- | --- |
+| Name resolves on `PATH` via `ops::program_on_path` | The script would shadow that program for every command the user runs. The conflicting path is named. Skipped when replacing an existing frozen command of the same name. |
+| Name already in the catalog | Requires an explicit confirmation; declining leaves the existing script byte-identical. |
+| Unrestricted command under `allow_unrestricted: false` | A forbidden mode must not be laundered into a permanent artifact (§7.3). |
+| Name is empty, `.`, `..`, or contains a path separator | `commands::validate_name` requires a single file name. |
+| Nothing to freeze | No history entry carries a generated command. |
+| Non-Unix platform | `commands::write` is `#[cfg(unix)]`; the fallback returns a "not yet supported" error. |
+
+Platform gating is a compile-time boundary rather than a runtime branch, which
+keeps the Windows question genuinely open instead of half-answered by a bash
+script nothing can run. The `# sai:` comment convention holds for PowerShell as
+well, so the header format will serve that work without redesign. Every other
+SAI capability is unaffected on platforms where freezing is unavailable.
+
+## 11.7 Listing
+
+`commands::list` reads the directory, skips non-files and unparseable files, and
+sorts by name. `format_listing` renders `name - intent` plus flags: commands
+frozen under unrestricted mode are marked, and recorded tools no longer found by
+`ops::program_on_path` are reported as `missing: …`.
+
+The staleness check earns its place here in a way it would not in `--list-tools`:
+these commands are meant to be long-lived, so surfacing one that will fail
+before it is run is worth the directory walk. It remains partial — a binary
+installed *after* the freeze can be shadowed by a script that was legitimate
+when written, and no run-time check is possible by design.
+
+## 11.8 What Freezing Deliberately Does Not Do
+
+- **Observe, log, or gate runs of a frozen command.** Structurally impossible
+  under this design, and accepted as the cost of it.
+- **Re-derive a command from its recorded intent.** The header makes that
+  possible later; nothing here performs it.
+- **Change ordinary invocation.** Generation, validation, confirmation and
+  execution are untouched by what has been frozen, and text supplied as a prompt
+  is still a prompt regardless of what names exist in the catalog.
+
+---
+
+# 12. Help System
 
 The `help` module provides a comprehensive, hierarchical help system accessible via `sai help` and `sai help <topic>`. This system is designed to make SAI fully self-documenting from the command line.
 
-## 11.1 Architecture
+## 12.1 Architecture
 
 - **Early interception**: `main.rs` calls `help::try_handle_help()` before normal CLI parsing to intercept `sai help` commands
-- **Topic enumeration**: `HelpTopic` enum defines 16 topics plus the `topics` index, covering all major features
+- **Topic enumeration**: `HelpTopic` enum defines 17 topics plus the `topics` index, covering all major features
 - **Static content**: Help text is compiled into the binary as `&'static str` constants
 - **Hierarchical navigation**: Users start with `sai help` for overview, then drill into specific topics
 
-## 11.2 Available Topics
+## 12.2 Available Topics
 
 The help system covers:
 
@@ -555,6 +768,7 @@ The help system covers:
 - **unrestricted** - Lifting the tool whitelist with forced inspection
 - **explain** - Command explanation before execution
 - **analyze** - Post-mortem analysis of failed invocations
+- **commands** - Freezing and listing deterministic commands (aliases: `freeze`, `save`)
 - **interactive** - Mini editor, key bindings, prompt history
 - **history** - NDJSON log format, location, rotation
 - **packages** - Built-in prompt configs in `prompts/` directory
@@ -562,7 +776,7 @@ The help system covers:
 - **advanced** - Simple vs advanced mode, flag combinations
 - **topics** - List all available topics
 
-## 11.3 Usage Patterns
+## 12.3 Usage Patterns
 
 ```bash
 # Show top-level overview and common usage
@@ -577,7 +791,7 @@ sai help scope
 sai help explain
 ```
 
-## 11.4 Design Principles
+## 12.4 Design Principles
 
 - **Self-contained**: No external documentation required for basic usage
 - **Progressively discoverable**: Start broad, drill down as needed
@@ -589,12 +803,14 @@ The help system complements the README by providing quick command-line reference
 
 ---
 
-# 12. Testing Strategy
+# 13. Testing Strategy
 
 - Module-level unit tests cover prompt building, peek truncation, configuration merging, operator detection, risk-marker computation, executor behaviour, history logging, and rotation. Each test invokes the respective module in isolation without hitting the network.
 - The editor is tested by feeding `KeyEvent` sequences directly to `EditorState`, so editing, multi-line composition, history navigation and reverse search are all verified without a terminal. `resolve_prompt_source` is a pure function of the flags and a `is_tty` boolean, so every mode-selection case is a plain unit test.
 - The preflight card's `render` returns a `String`, so its contents are asserted directly rather than by capturing stderr.
 - Prompt-history tests use the config-directory override helper to exercise persistence, rotation, corrupt-line skipping and duplicate collapsing against a temporary directory.
+- Frozen-command tests cover header round-tripping, the default-mode quoting rule and its glob exception, verbatim emission for shell-executed modes, the conditional risk guard, and a listing that reflects an intent edited by hand in the script. The quoting test compares an emitted script's actual output against `executor::prepare_command`, so the emitted text is checked against the executor's real glob behaviour rather than an assumption about it — this is the regression that matters most, since a "simplification" of the glob exception would silently break every frozen command using a wildcard.
+- Freeze refusals are tested end-to-end through `run_with_dependencies`: the `allow_unrestricted` refusal, an absent history entry, a declined review, and a default-mode freeze succeeding while unrestricted is forbidden all assert that the catalog directory is left as it was. A further test asserts that the presence of frozen commands changes nothing about generation, validation, confirmation or execution.
 - The `app::run_with_dependencies` helper allows integration-style tests to inject mock implementations of `CommandGenerator` or `CommandExecutor` when richer scenarios are needed.
 - `tempfile`-backed fixtures keep filesystem manipulations isolated to throwaway directories.
 - History module tests verify:
@@ -605,7 +821,7 @@ The help system complements the README by providing quick command-line reference
 - Terminal rendering — cursor alignment down a multi-row prompt area, redraw as the buffer grows and shrinks, behaviour in a short window — cannot be exercised headlessly and is verified manually. macOS has been checked; **Linux and Windows verification remains outstanding.**
 - Execute `cargo test` to run the suite; no external services are contacted.
 
-# 13. Error Handling
+# 14. Error Handling
 
 Typical error conditions:
 
@@ -613,13 +829,16 @@ Typical error conditions:
 * Invalid prompt config
 * Disallowed tool name
 * Forbidden operator
-* Unrestricted mode forbidden by `safety.allow_unrestricted: false` — refused before any model call
+* Unrestricted mode forbidden by `safety.allow_unrestricted: false` — refused before any model call, and separately refused when freezing such a command
 * Conflicting `--interactive` and `--no-interactive` flags — rejected by clap
 * No prompt available in a non-interactive context — exits non-zero with an explicit message
 * Terminal refuses raw mode — reported, then degraded to a single-line read rather than failing
 * LLM returned empty or unparsable output
 * Missing or unreadable peek file
-* No history available for `--analyze`
+* No history available for `--analyze`, or no generated command available to freeze
+* Freeze name resolving to an existing program on `PATH` — refused, naming the program it would shadow
+* Freeze name already in the catalog — replaced only after explicit confirmation
+* Freeze attempted on a non-Unix platform — refused as not yet supported
 * History log read/write failures
 * Prompt-history write failures — downgraded to a warning so the run continues
 
@@ -627,7 +846,7 @@ All errors include clear diagnostic messages.
 
 ---
 
-# 14. Build and Release
+# 15. Build and Release
 
 SAI provides a GitHub Actions workflow building:
 
@@ -639,30 +858,6 @@ All builds use Rust stable and upload artifacts for release.
 
 ---
 
-# 15. License
+# 16. License
 
 MIT License.
-
-## Deterministic command artifacts
-
-Frozen commands are executable bash scripts whose `# sai:<field>=<JSON string>`
-header is the complete provenance record (intent, freeze time, safety mode,
-tools, prompt configuration, risks, and command). There is deliberately no
-index: listing reparses the files, so a copied or hand-edited script remains the
-source of truth. Writes use a same-directory temporary file, executable mode,
-and atomic rename.
-
-Shell-executed unsafe and unrestricted commands are emitted verbatim. Default
-mode quotes each validated token with `shell_words::quote`, except tokens that
-contain `*`, `?`, or `[`. Those remain bare because the default executor itself
-expands globs; quoting them would change verified behavior. Risk markers add a
-visible `read -rp` guard. The script accepts no forwarded arguments.
-
-`allow_unrestricted: false` is enforced when freezing, before filesystem writes.
-It cannot control execution afterward because the artifact runs without SAI.
-Emission is currently Unix-only; Windows support is deferred.
-
-`HistoryEntry` includes a defaulted `prompt: Option<String>` containing the
-resolved natural-language prompt. The default preserves compatibility with
-older NDJSON records and makes editor-composed intent available to analysis and
-freezing.

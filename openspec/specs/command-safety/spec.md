@@ -85,7 +85,7 @@ Under `--unrestricted` SAI SHALL always produce an explanation of the generated 
 
 ### Requirement: A preflight card precedes every confirmation
 
-Wherever SAI asks the user to confirm a generated command, it SHALL first present a preflight card: a single compact block summarizing the command and the decisions that produced it. The card SHALL be presented after any explanation and immediately before the confirmation prompt, so it is the last thing the user reads before deciding. An invocation that executes without asking for confirmation SHALL NOT present a card. The card SHALL be written to the error stream, leaving the executed command's own output on the standard stream untouched.
+Wherever SAI asks the user to confirm a generated command, it SHALL first present a preflight card: a single compact block summarizing the command and the decisions that produced it. This SHALL include the confirmation that precedes freezing a command into a permanent artifact, which is the point at which per-use review stops. The card SHALL be presented after any explanation and immediately before the confirmation prompt, so it is the last thing the user reads before deciding. An invocation that executes without asking for confirmation SHALL NOT present a card. The card SHALL be written to the error stream, leaving the executed command's own output on the standard stream untouched.
 
 #### Scenario: Card shown before an ordinary confirmation
 
@@ -96,6 +96,11 @@ Wherever SAI asks the user to confirm a generated command, it SHALL first presen
 
 - **WHEN** SAI asks the user to confirm a command under `--unrestricted`
 - **THEN** a preflight card is presented immediately before the confirmation prompt, followed by the unrestricted mode's own announcement and its typed-affirmative prompt
+
+#### Scenario: Card shown before freezing
+
+- **WHEN** SAI asks the user to confirm freezing a command into a script
+- **THEN** a preflight card for that command is presented immediately before the confirmation prompt
 
 #### Scenario: No confirmation means no card
 
@@ -208,6 +213,8 @@ The confirmation shown under `--unrestricted` SHALL require the user to type `ye
 
 The global configuration SHALL support a setting that disables unrestricted mode. When the setting forbids it, `--unrestricted` SHALL refuse to run, SHALL exit with a non-zero status, and SHALL name the configuration file responsible so the user can find it. When the setting is absent, unrestricted mode SHALL be available, preserving behaviour for existing configurations.
 
+The setting SHALL additionally refuse to freeze a command that was generated under unrestricted mode, so a forbidden mode cannot be laundered into a permanent artifact by saving it first. Because a frozen command runs without SAI, the setting SHALL NOT be understood as governing the execution of a script that already exists: its guarantee is that this machine does not produce unwhitelisted commands, not that no such command can ever run on it.
+
 #### Scenario: Unrestricted mode disabled by configuration
 
 - **WHEN** the configuration forbids unrestricted mode and the user passes `--unrestricted`
@@ -227,6 +234,16 @@ The global configuration SHALL support a setting that disables unrestricted mode
 
 - **WHEN** the configuration forbids unrestricted mode and the user runs SAI without `--unrestricted`
 - **THEN** the invocation proceeds normally
+
+#### Scenario: Freezing an unrestricted command is refused
+
+- **WHEN** the configuration forbids unrestricted mode and the user tries to freeze a command recorded as generated under that mode
+- **THEN** SAI refuses, names the configuration file responsible, and writes no script
+
+#### Scenario: Freezing an ordinary command is unaffected
+
+- **WHEN** the configuration forbids unrestricted mode and the user freezes a command generated under default or unsafe mode
+- **THEN** the command is frozen normally
 
 ### Requirement: Confirmations carry deterministic risk markers
 

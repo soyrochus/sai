@@ -1,9 +1,10 @@
 # Releases/Changelog
 
-## Release v1.2.0 - Interactive Prompt Editor and Prompt History
+## Release v1.2.0 - Interactive Prompt Editor, Prompt History and Deterministic Commands
 
 Sai-cli 1.2.0 makes composing a prompt an editable step rather than a one-shot
-shell argument, and remembers the prompts you have already written.
+shell argument, remembers the prompts you have already written, and lets you
+freeze a command you have verified so it never needs to be generated again.
 
 Highlights:
 - Confirmation output now uses a compact preflight card showing the submitted
@@ -31,6 +32,39 @@ Highlights:
   `Ctrl+A`/`Ctrl+E`/`Ctrl+K`/`Ctrl+U` now act on the current line.
 - Prompt history is stored as NDJSON in `prompt_history.log` under the config
   directory, rotating at 256 KB and created owner-readable only on Unix.
+- Deterministic commands: `sai --save <name>` freezes the command from the most
+  recent invocation into a standalone executable bash script, and
+  `sai --save <name> "<prompt>"` generates, reviews and freezes in one step.
+  Freezing is reviewed like any other confirmation — the same preflight card,
+  then `Freeze this command? [y/N]` — and writes the script instead of running
+  the command. The frozen script runs with no sai-cli, no model and no network
+  in the path, and does exactly the same thing on every run.
+- Each frozen script carries its own provenance as `# sai:` header comments:
+  intent, freeze time, safety mode, permitted tools, prompt config, risk markers
+  and the command itself. There is no registry or index — the file is the single
+  source of truth, so copying, editing, committing or deleting it with ordinary
+  tools is all the management it needs.
+- Emitted commands preserve the semantics of the mode they were frozen under.
+  Commands frozen under `--unsafe` or `--unrestricted` keep their operators
+  verbatim; default-mode commands have each argument quoted except arguments
+  containing `*`, `?` or `[`, which stay bare so the shell performs the same
+  glob expansion sai-cli performed itself. A frozen script gains no shell
+  capability the reviewed command did not have.
+- When risk markers were present at freeze time, the script carries its own
+  `read -rp` confirmation guard. It is ordinary script text: visible on `cat`,
+  and removable by the user.
+- Freeze-time refusals: a name that already resolves on `PATH` (naming the
+  program it would shadow), an existing frozen command replaced only after
+  explicit confirmation, and an unrestricted command when
+  `safety.allow_unrestricted: false` is set. A refusal writes no file at all;
+  the script is written to a temporary file and renamed into place, so a
+  half-written executable never lands on `PATH`.
+- New flags: `--save`, `--list-commands` (name, intent, an `unrestricted` mark
+  and a flag for recorded tools that have left `PATH`), and `--commands-path`.
+  New `commands.dir` config key overrides the default `<config dir>/bin`. New
+  `commands` help topic (`sai help commands`).
+- `sai --init` now prints the `export PATH="$(sai --commands-path):$PATH"` line
+  for the command catalog. Sai-cli never edits shell startup files.
 
 Compatibility:
 - **Confirmation output shape changed**: the former multi-section confirmation
@@ -44,7 +78,23 @@ Compatibility:
   "required argument" error. In a terminal it opens the editor; outside one it
   exits non-zero with an explicit "No prompt provided" message.
 - No new dependencies; the editor is built on the `crossterm` crate already in
-  use.
+  use, and script emission uses the `shell-words` crate already present.
+- `history.log` entries additionally record the submitted prompt. The field is
+  optional, so entries written by earlier versions still parse and read as
+  having no recorded intent; a command frozen from such an entry has its intent
+  recorded as unavailable. `--analyze` benefits too — it previously had to infer
+  the request from `argv`, which shows nothing for an editor-composed prompt.
+- **Narrowed guarantee**: `safety.allow_unrestricted: false` now also refuses to
+  *freeze* an unrestricted command, so the mode cannot be laundered into a
+  permanent artifact. It correspondingly no longer means "no unrestricted
+  command can run on this machine" — a frozen script runs without sai-cli, which
+  cannot gate what it is not part of.
+- Freezing is Unix-only in this release. `--save` on Windows reports that the
+  platform is not yet supported and writes nothing; every other capability works
+  normally there.
+- Nothing about ordinary invocation changes when commands have been frozen:
+  generation, safety validation, confirmation and execution are unaffected, and
+  text supplied as a prompt is still treated as a prompt.
 
 Tell the shell what you want, not how to do it.
 

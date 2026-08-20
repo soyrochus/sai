@@ -3,7 +3,7 @@ use crate::ops::program_on_path;
 use crate::safety_mode::SafetyMode;
 use anyhow::{Context, Result, anyhow};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrozenCommand {
@@ -70,7 +70,7 @@ impl FrozenCommand {
         if !text.starts_with("#!/usr/bin/env bash\n# sai:") {
             return Err(anyhow!("not a SAI command"));
         }
-        let mut get = |wanted: &str| -> Result<String> {
+        let get = |wanted: &str| -> Result<String> {
             let prefix = format!("# sai:{wanted}=");
             let raw = text
                 .lines()
@@ -200,6 +200,11 @@ pub fn format_listing(commands: &[FrozenCommand]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::set_config_dir_override_for_tests;
+    use crate::executor::prepare_command;
+    use std::process::Command;
+    use tempfile::TempDir;
+
     fn card(mode: SafetyMode) -> FrozenCommand {
         FrozenCommand {
             name: "demo".into(),
@@ -243,5 +248,79 @@ mod tests {
         assert!(!c.render().contains("read -rp"));
         c.risk_markers.push("destructive".into());
         assert!(c.render().contains("read -rp"));
+    }
+
+    #[test]
+    fn listing_reflects_an_intent_edited_in_the_script() {
+        let temp = TempDir::new().unwrap();
+        let _guard = set_config_dir_override_for_tests(temp.path().join("config"));
+        let config = GlobalConfig::default();
+        let path = write(&card(SafetyMode::Default), &config).unwrap();
+        let original = fs::read_to_string(&path).unwrap();
+        let edited = original.replace(
+            "# sai:intent=\"multi\\nline\"",
+            "# sai:intent=\"hand edited intent\"",
+        );
+        fs::write(&path, edited).unwrap();
+
+        let listed = list(&config).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].intent, "hand edited intent");
+        assert!(format_listing(&listed).contains("demo - hand edited intent"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn emitted_scripts_match_executor_output_including_default_mode_globs() {
+        let temp = TempDir::new().unwrap();
+        let _guard = set_config_dir_override_for_tests(temp.path().join("config"));
+        let work = temp.path().join("work");
+        fs::create_dir_all(&work).unwrap();
+        fs::write(work.join("first.txt"), "first").unwrap();
+        fs::write(work.join("second.txt"), "second").unwrap();
+
+        let pattern = format!("{}/*.txt", work.display());
+        let default = FrozenCommand {
+            name: "default-output".into(),
+            command: format!("printf '%s\\n' {pattern}"),
+            tokens: vec!["printf".into(), "%s\\n".into(), pattern],
+            intent: "print matching paths".into(),
+            frozen_at: "2026-01-01T00:00:00Z".into(),
+            safety_mode: SafetyMode::Default,
+            tools: vec!["printf".into()],
+            prompt_config: "global".into(),
+            risk_markers: vec![],
+        };
+        let default_path = write(&default, &GlobalConfig::default()).unwrap();
+        let executor_output = prepare_command(&default.command, &default.tokens, false)
+            .output()
+            .unwrap();
+        let script_output = Command::new(default_path).output().unwrap();
+        assert!(executor_output.status.success());
+        assert_eq!(script_output.status, executor_output.status);
+        assert_eq!(script_output.stdout, executor_output.stdout);
+        assert_eq!(script_output.stderr, executor_output.stderr);
+
+        let unsafe_command = "printf 'unsafe\\n' | tr a-z A-Z";
+        let unsafe_card = FrozenCommand {
+            name: "unsafe-output".into(),
+            command: unsafe_command.into(),
+            tokens: shell_words::split(unsafe_command).unwrap(),
+            intent: "uppercase text".into(),
+            frozen_at: "2026-01-01T00:00:00Z".into(),
+            safety_mode: SafetyMode::Unsafe,
+            tools: vec!["printf".into(), "tr".into()],
+            prompt_config: "global".into(),
+            risk_markers: vec![],
+        };
+        let unsafe_path = write(&unsafe_card, &GlobalConfig::default()).unwrap();
+        let executor_output = prepare_command(unsafe_command, &unsafe_card.tokens, true)
+            .output()
+            .unwrap();
+        let script_output = Command::new(unsafe_path).output().unwrap();
+        assert!(executor_output.status.success());
+        assert_eq!(script_output.status, executor_output.status);
+        assert_eq!(script_output.stdout, executor_output.stdout);
+        assert_eq!(script_output.stderr, executor_output.stderr);
     }
 }

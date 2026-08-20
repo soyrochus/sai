@@ -48,6 +48,18 @@ Current release and toolchain:
   provenance. **Confirmation output changed shape**, and risk markers now appear
   on every confirmation instead of only under `--unrestricted`. This is
   stderr-only: execution, exit codes and history records are unchanged.
+- Added **deterministic (frozen) commands**: `sai --save <name>` freezes the last
+  generated command as a standalone executable bash script, and
+  `sai --save <name> "<prompt>"` generates, reviews and freezes in one step. The
+  script carries its own `# sai:` provenance header, runs without sai-cli, a
+  model or a network, and emits a confirmation guard when risk markers were
+  present at freeze time. Added `--list-commands` and `--commands-path`, the
+  `commands.dir` config key, and a `commands` help topic; `--init` now prints
+  the `export PATH=...` line. `history.log` entries additionally record the
+  submitted prompt (optional field, older entries still parse).
+  `safety.allow_unrestricted: false` now also refuses to *freeze* an
+  unrestricted command — it cannot govern an already-frozen script, which runs
+  without sai-cli. Unix only for now; `--save` refuses on Windows.
 - Added `--interactive` / `-i`, `--no-interactive`, and `--prompt-config`.
 - Passing a prompt as an argument is unchanged: it runs directly, without the
   editor. Piped and redirected input never opens the editor.
@@ -238,6 +250,7 @@ The help system covers:
 - **unrestricted** - Lifting the tool whitelist with forced inspection
 - **explain** - Explain generated commands before running them
 - **analyze** - Analyze the last sai invocation
+- **commands** - Freeze and list deterministic commands
 - **interactive** - Mini editor, key bindings, prompt history
 - **history** - Where history is stored and how it is used
 - **packages** - Built-in prompt configs under prompts/
@@ -603,6 +616,154 @@ The repo ships with ready-to-adapt prompt configs under `prompts/`:
 
 ---
 
+## Deterministic commands
+
+Sai-cli can **freeze** a command it generated into a standalone executable bash
+script. The model is consulted once, when the command is authored; from then on
+the script runs on its own, with no model, no network, and sai-cli entirely out
+of the execution path. A command that took three attempts to get right is
+reviewed once and kept.
+
+### **Freeze a command**
+
+Freeze the command from the most recent invocation:
+
+```bash
+sai "remove build logs older than 30 days"
+# review, run, confirm it does the right thing
+
+sai --save cleanlogs
+```
+
+Or generate, review, and freeze in a single step:
+
+```bash
+sai --save cleanlogs "remove build logs older than 30 days"
+```
+
+Either way, the preflight card is shown first and the script is only written
+after you confirm:
+
+```text
+Freeze this command? [y/N]
+```
+
+Freezing is a write, not a run: `sai --save NAME "PROMPT"` writes the script
+instead of executing the command.
+
+### **Put the catalog on PATH**
+
+Frozen commands are written to `<sai config dir>/bin` (for example
+`~/.config/sai/bin` on Linux). Sai-cli never edits your shell startup files, so
+add the directory yourself:
+
+```bash
+export PATH="$(sai --commands-path):$PATH"
+```
+
+`sai --init` prints this same line. Once the directory is on `PATH`, the frozen
+command is just a command:
+
+```bash
+cleanlogs
+```
+
+Override the location with a `commands` block in `config.yaml`. An absolute path
+is used as-is; a relative path is resolved against the config directory, keeping
+configs portable. `~` is not expanded, so write the path out in full:
+
+```yaml
+commands:
+  dir: "/home/you/bin"
+```
+
+### **What the script looks like**
+
+The script is plain text and carries its own provenance in `# sai:` header
+comments, so a copied or committed script explains itself without sai-cli:
+
+```bash
+#!/usr/bin/env bash
+# sai:intent="remove build logs older than 30 days"
+# sai:frozen-at="2026-08-20T11:24:07Z"
+# sai:safety="default"
+# sai:tools="find"
+# sai:prompt-config="/home/you/.config/sai/config.yaml"
+# sai:risk-markers=""
+# sai:command="find ./logs -type f -mtime +30 -delete"
+set -euo pipefail
+find ./logs -type f -mtime +30 -delete
+```
+
+The file is the only source of truth — there is no registry or index. Edit it,
+copy it, commit it, or delete it with ordinary tools; the header is what
+`--list-commands` reads back.
+
+Two details are worth knowing:
+
+- **Quoting follows the safety mode the command was frozen under.** Commands
+  frozen under `--unsafe` or `--unrestricted` already ran through a shell, so
+  they are emitted verbatim with their operators intact. Default-mode commands
+  never saw a shell, so each argument is quoted — except arguments containing
+  `*`, `?` or `[`, which are left bare so the shell performs the same glob
+  expansion sai-cli performed itself. The frozen script does what the reviewed
+  command did, and gains no new shell powers.
+- **Risky commands carry their own confirmation.** If risk markers were present
+  at freeze time, the script contains a `read -rp` guard that aborts unless you
+  answer `y`/`yes`. It is script text like any other: visible on `cat`, and
+  removable if you decide you no longer want it.
+
+### **List frozen commands**
+
+```bash
+sai --list-commands
+```
+
+```text
+cleanlogs - remove build logs older than 30 days
+purgecache - drop the stale cache dir [unrestricted]
+tidyreports - archive last month's reports [missing: mlr]
+```
+
+The listing scans the directory and parses each script's header, so hand-edits
+show up immediately. Commands frozen under unrestricted mode are marked, and a
+command whose recorded tools have left your `PATH` is flagged as one that will
+fail. Files that are not sai-emitted scripts are skipped rather than breaking
+the listing. Note that the tool list is recorded when you generate and freeze in
+one step; freezing from history records no tools, so nothing is flagged there.
+
+### **What sai-cli refuses to freeze**
+
+Every check happens at freeze time, since nothing can be checked at run time. A
+refusal writes no file at all — the script is written to a temporary file and
+renamed into place, so a half-written executable never lands on your `PATH`.
+
+- **A name that already resolves on `PATH`** is refused, naming the program it
+  would shadow. Freezing something as `find` is not allowed.
+- **A name already in the catalog** requires an explicit confirmation before it
+  is replaced; declining leaves the existing script byte-identical.
+- **An unrestricted command** is refused when `safety.allow_unrestricted: false`
+  is set, naming the config file responsible. Note the narrowed guarantee: the
+  setting stops this machine from *producing* unwhitelisted commands, but it
+  cannot govern a script that already exists, because that script runs without
+  sai-cli.
+- **Nothing to freeze** — `sai --save NAME` with no generated command in history
+  exits non-zero.
+- **Windows.** Script emission is Unix-only for now; `--save` reports that the
+  platform is not yet supported. Every other sai-cli capability works normally
+  there.
+
+### **Where the intent comes from**
+
+`history.log` entries now record the submitted prompt alongside the generated
+command, which is what lets `sai --save` recover the intent of a prompt composed
+in the interactive editor (where `argv` is just `["sai"]`). The field is
+optional, so entries written by older versions still parse; a command frozen
+from such an entry has its intent recorded as `unavailable` rather than silently
+omitted.
+
+---
+
 ## History and Analysis
 
 Sai-cli automatically maintains a history log of all invocations in NDJSON format (newline-delimited JSON). Each command execution is recorded with metadata including:
@@ -657,18 +818,15 @@ This is particularly useful after errors or unexpected results, as the LLM can e
 
 ---
 
-## Architecture Overview
+## Architecture
 
-- `src/main.rs`: minimal bootstrap that calls into the real application logic.
-- `src/app.rs`: orchestrates CLI parsing, configuration loading, LLM invocation, confirmation, and command execution. Exposes `run_with_dependencies` for dependency injection during tests.
-- Supporting modules isolate responsibilities: `cli` (clap parser and prompt-source resolution), `config` (YAML + env resolution), `prompt` (system prompt builder), `peek` (sample ingestion), `llm` (CommandGenerator trait + HTTP backend), `safety` (operator checks and risk markers), `safety_mode` (the default/unsafe/unrestricted ladder), `editor` (interactive mini editor state machine and terminal driver), `prompt_history` (NDJSON prompt store, recall and search), `executor` (CommandExecutor trait + shell bridge), `history` (NDJSON logging and analysis), `scope` (directory context), `help` (hierarchical help topics), and `ops` (init/create/add/list helpers).
-- The trait boundaries (`CommandGenerator`, `CommandExecutor`) allow swapping in mocks or alternative implementations (e.g., offline generators or dry-run executors) without touching the application core.
+The module layout, trait boundaries, safety model and design rationale are
+documented in [docs/TECHSPEC.md](docs/TECHSPEC.md).
 
 ## Development
 
 - Format with `cargo fmt`.
 - Run the unit suite with `cargo test`; it exercises filesystem helpers via `tempfile` and stays offline.
-- Inspect or extend the technical deep dive in [docs/TECHSPEC.md](docs/TECHSPEC.md) for module-level rationale and expected behaviours.
 
 ## Philosophy
 
@@ -697,30 +855,3 @@ This project follows the [FOSS Pluralism Manifesto](./FOSS_PLURALISM_MANIFESTO.m
 Copyright (c) 2025, 2026 Iwan van der Kleijn
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## Deterministic commands
-
-Freeze the last reviewed command with `sai --save cleanlogs`, or generate and
-freeze in one step with `sai --save cleanlogs "remove old build logs"`. Add the
-catalog to your shell's path explicitly:
-
-```sh
-export PATH="$(sai --commands-path):$PATH"
-```
-
-SAI never edits shell startup files. A frozen command is a standalone executable
-bash script: it runs deterministically without SAI, a model, or network access.
-For example, its readable artifact begins:
-
-```bash
-#!/usr/bin/env bash
-# sai:intent="remove old build logs"
-# sai:safety="default"
-set -euo pipefail
-find ./logs -type f -mtime +30 -delete
-```
-
-Use `sai --list-commands` to scan the scripts and their provenance headers.
-`commands.dir` may override the default `<SAI config>/bin` directory.
-`safety.allow_unrestricted: false` prevents SAI from *freezing* unrestricted
-commands; it cannot govern an already-frozen script executing without SAI.

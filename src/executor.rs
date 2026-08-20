@@ -41,38 +41,41 @@ pub struct ShellCommandExecutor;
 
 impl CommandExecutor for ShellCommandExecutor {
     fn execute(&self, cmd_line: &str, tokens: &[String], unsafe_mode: bool) -> Result<i32> {
-        let status = if unsafe_mode {
-            #[cfg(windows)]
-            let mut cmd = {
-                let mut command = Command::new("cmd");
-                command.arg("/C").arg(cmd_line);
-                command
-            };
-
-            #[cfg(not(windows))]
-            let mut cmd = {
-                let mut command = Command::new("sh");
-                command.arg("-c").arg(cmd_line);
-                command
-            };
-
-            cmd.status()
-                .with_context(|| format!("Failed to execute command '{}'", cmd_line))?
-        } else {
-            // Safe mode: expand globs in arguments before executing
-            let mut cmd = Command::new(&tokens[0]);
-            if tokens.len() > 1 {
-                let mut expanded_args = Vec::new();
-                for arg in &tokens[1..] {
-                    expanded_args.extend(expand_glob_if_needed(arg));
-                }
-                cmd.args(&expanded_args);
-            }
-            cmd.status()
-                .with_context(|| format!("Failed to execute command '{}'", tokens[0]))?
-        };
+        let mut command = prepare_command(cmd_line, tokens, unsafe_mode);
+        let program = if unsafe_mode { cmd_line } else { &tokens[0] };
+        let status = command
+            .status()
+            .with_context(|| format!("Failed to execute command '{}'", program))?;
 
         Ok(status.code().unwrap_or(1))
+    }
+}
+
+/// Build the exact process invocation used by the executor. Kept separate so
+/// script-emission tests can compare observable output without duplicating the
+/// executor's glob and shell semantics.
+pub(crate) fn prepare_command(cmd_line: &str, tokens: &[String], unsafe_mode: bool) -> Command {
+    if unsafe_mode {
+        #[cfg(windows)]
+        let mut command = Command::new("cmd");
+        #[cfg(windows)]
+        command.arg("/C").arg(cmd_line);
+
+        #[cfg(not(windows))]
+        let mut command = Command::new("sh");
+        #[cfg(not(windows))]
+        command.arg("-c").arg(cmd_line);
+
+        command
+    } else {
+        // Safe mode: expand globs in arguments before executing.
+        let mut command = Command::new(&tokens[0]);
+        let expanded_args = tokens[1..]
+            .iter()
+            .flat_map(|arg| expand_glob_if_needed(arg))
+            .collect::<Vec<_>>();
+        command.args(expanded_args);
+        command
     }
 }
 
