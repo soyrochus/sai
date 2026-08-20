@@ -1,0 +1,14 @@
+DETERMINISTIC COMMANDS
+
+Freeze the most recently generated command:
+  sai --save cleanlogs
+
+Generate, review, and freeze in one invocation:
+  sai --save cleanlogs "remove old build logs"
+
+The command is an executable bash script and runs without SAI or a model.
+Add its directory to PATH with:
+  export PATH="$(sai --commands-path):$PATH"
+
+Inspect the catalog with `sai --list-commands`. The scripts themselves are the
+source of truth; editing a provenance header changes what the listing reports.

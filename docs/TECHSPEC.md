@@ -642,3 +642,27 @@ All builds use Rust stable and upload artifacts for release.
 # 15. License
 
 MIT License.
+
+## Deterministic command artifacts
+
+Frozen commands are executable bash scripts whose `# sai:<field>=<JSON string>`
+header is the complete provenance record (intent, freeze time, safety mode,
+tools, prompt configuration, risks, and command). There is deliberately no
+index: listing reparses the files, so a copied or hand-edited script remains the
+source of truth. Writes use a same-directory temporary file, executable mode,
+and atomic rename.
+
+Shell-executed unsafe and unrestricted commands are emitted verbatim. Default
+mode quotes each validated token with `shell_words::quote`, except tokens that
+contain `*`, `?`, or `[`. Those remain bare because the default executor itself
+expands globs; quoting them would change verified behavior. Risk markers add a
+visible `read -rp` guard. The script accepts no forwarded arguments.
+
+`allow_unrestricted: false` is enforced when freezing, before filesystem writes.
+It cannot control execution afterward because the artifact runs without SAI.
+Emission is currently Unix-only; Windows support is deferred.
+
+`HistoryEntry` includes a defaulted `prompt: Option<String>` containing the
+resolved natural-language prompt. The default preserves compatibility with
+older NDJSON records and makes editor-composed intent available to analysis and
+freezing.

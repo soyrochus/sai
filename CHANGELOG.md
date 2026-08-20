@@ -180,3 +180,12 @@ LLM-powered: OpenAI and Azure OpenAI support with configurable models
 Tell the shell what you want, not how to do it.
 
 See README.md for installation and usage details.
+
+## Unreleased
+
+- Added deterministic commands: `--save`, `--list-commands`, `--commands-path`,
+  configurable `commands.dir`, self-describing executable artifacts, and prompt
+  intent in invocation history.
+- Clarified that `safety.allow_unrestricted: false` gates creation of
+  unrestricted frozen commands, not execution of standalone artifacts.
+- Frozen-command emission supports Unix in this release; Windows is deferred.

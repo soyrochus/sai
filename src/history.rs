@@ -13,6 +13,9 @@ pub struct HistoryEntry {
     pub argv: Vec<String>,
     pub exit_code: i32,
     pub generated_command: Option<String>,
+    /// Defaulted so history written before prompts were recorded remains readable.
+    #[serde(default)]
+    pub prompt: Option<String>,
     pub unsafe_mode: bool,
     /// Whether this run lifted the tool whitelist. Defaulted so entries written
     /// before the field existed still parse and read as not unrestricted.
@@ -159,6 +162,7 @@ mod tests {
             argv: vec!["sai".to_string()],
             exit_code: 0,
             generated_command: Some("echo hi".to_string()),
+            prompt: Some("say\nhi".to_string()),
             unsafe_mode: false,
             unrestricted: false,
             confirm: true,
@@ -173,6 +177,7 @@ mod tests {
         assert_eq!(latest.generated_command, entry.generated_command);
         assert_eq!(latest.peek_files, entry.peek_files);
         assert!(latest.confirm);
+        assert_eq!(latest.prompt.as_deref(), Some("say\nhi"));
     }
 
     #[test]
@@ -186,6 +191,7 @@ mod tests {
             argv: vec!["sai".to_string()],
             exit_code: 0,
             generated_command: Some("echo hi".to_string()),
+            prompt: None,
             unsafe_mode: false,
             unrestricted: false,
             confirm: true,
@@ -222,6 +228,7 @@ mod tests {
             "an absent field reads as not unrestricted"
         );
         assert_eq!(entry.generated_command.as_deref(), Some("echo hi"));
+        assert!(entry.prompt.is_none());
     }
 
     #[test]
@@ -235,6 +242,7 @@ mod tests {
             argv: vec!["sai".to_string()],
             exit_code: 0,
             generated_command: Some("ripgrep hi".to_string()),
+            prompt: None,
             unsafe_mode: true,
             unrestricted: true,
             confirm: true,

@@ -697,3 +697,30 @@ This project follows the [FOSS Pluralism Manifesto](./FOSS_PLURALISM_MANIFESTO.m
 Copyright (c) 2025, 2026 Iwan van der Kleijn
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Deterministic commands
+
+Freeze the last reviewed command with `sai --save cleanlogs`, or generate and
+freeze in one step with `sai --save cleanlogs "remove old build logs"`. Add the
+catalog to your shell's path explicitly:
+
+```sh
+export PATH="$(sai --commands-path):$PATH"
+```
+
+SAI never edits shell startup files. A frozen command is a standalone executable
+bash script: it runs deterministically without SAI, a model, or network access.
+For example, its readable artifact begins:
+
+```bash
+#!/usr/bin/env bash
+# sai:intent="remove old build logs"
+# sai:safety="default"
+set -euo pipefail
+find ./logs -type f -mtime +30 -delete
+```
+
+Use `sai --list-commands` to scan the scripts and their provenance headers.
+`commands.dir` may override the default `<SAI config>/bin` directory.
+`safety.allow_unrestricted: false` prevents SAI from *freezing* unrestricted
+commands; it cannot govern an already-frozen script executing without SAI.

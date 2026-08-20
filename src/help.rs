@@ -11,6 +11,7 @@ pub enum HelpTopic {
     Unrestricted,
     Explain,
     Analyze,
+    Commands,
     Interactive,
     History,
     Packages,
@@ -36,6 +37,7 @@ impl HelpTopic {
             "unrestricted" => Some(Self::Unrestricted),
             "explain" => Some(Self::Explain),
             "analyze" | "analyse" => Some(Self::Analyze),
+            "commands" | "freeze" | "save" => Some(Self::Commands),
             "interactive" | "editor" | "prompt-history" => Some(Self::Interactive),
             "history" | "logs" => Some(Self::History),
             "packages" | "package" => Some(Self::Packages),
@@ -59,6 +61,7 @@ impl HelpTopic {
             HelpTopic::Unrestricted => "unrestricted",
             HelpTopic::Explain => "explain",
             HelpTopic::Analyze => "analyze",
+            HelpTopic::Commands => "commands",
             HelpTopic::Interactive => "interactive",
             HelpTopic::History => "history",
             HelpTopic::Packages => "packages",
@@ -81,6 +84,7 @@ impl HelpTopic {
             HelpTopic::Unrestricted => "Lifting the tool whitelist with forced inspection",
             HelpTopic::Explain => "Explain generated commands before running them",
             HelpTopic::Analyze => "Analyze the last sai invocation",
+            HelpTopic::Commands => "Freeze and list deterministic commands",
             HelpTopic::Interactive => "Mini editor, key bindings, prompt history",
             HelpTopic::History => "Where history is stored and how it is used",
             HelpTopic::Packages => "Built-in prompt configs under prompts/",
@@ -103,6 +107,7 @@ impl HelpTopic {
             HelpTopic::Unrestricted => UNRESTRICTED_HELP,
             HelpTopic::Explain => EXPLAIN_HELP,
             HelpTopic::Analyze => ANALYZE_HELP,
+            HelpTopic::Commands => COMMANDS_HELP,
             HelpTopic::Interactive => INTERACTIVE_HELP,
             HelpTopic::History => HISTORY_HELP,
             HelpTopic::Packages => PACKAGES_HELP,
@@ -158,6 +163,10 @@ const TOPIC_ENTRIES: &[TopicEntry] = &[
     TopicEntry {
         topic: HelpTopic::Analyze,
         description: HelpTopic::Analyze.short_description(),
+    },
+    TopicEntry {
+        topic: HelpTopic::Commands,
+        description: HelpTopic::Commands.short_description(),
     },
     TopicEntry {
         topic: HelpTopic::Interactive,
@@ -299,6 +308,7 @@ const UNSAFE_HELP: &str = include_str!("../templates/help/unsafe.txt");
 const UNRESTRICTED_HELP: &str = include_str!("../templates/help/unrestricted.txt");
 const EXPLAIN_HELP: &str = include_str!("../templates/help/explain.txt");
 const ANALYZE_HELP: &str = include_str!("../templates/help/analyze.txt");
+const COMMANDS_HELP: &str = include_str!("../templates/help/commands.txt");
 const INTERACTIVE_HELP: &str = include_str!("../templates/help/interactive.txt");
 const HISTORY_HELP: &str = include_str!("../templates/help/history.txt");
 const PACKAGES_HELP: &str = include_str!("../templates/help/packages.txt");
@@ -388,6 +398,10 @@ mod tests {
             (
                 HelpTopic::Analyze,
                 include_str!("../templates/help/analyze.txt"),
+            ),
+            (
+                HelpTopic::Commands,
+                include_str!("../templates/help/commands.txt"),
             ),
             (
                 HelpTopic::Interactive,

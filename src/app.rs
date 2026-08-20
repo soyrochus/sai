@@ -1,6 +1,8 @@
 use crate::cli::{Cli, PromptSource, resolve_prompt_config_path, resolve_prompt_source};
+use crate::commands::{self, FrozenCommand};
 use crate::config::{
-    find_global_config_path, load_global_config, load_prompt_config, resolve_ai_config,
+    commands_dir, find_global_config_path, load_global_config, load_prompt_config,
+    resolve_ai_config,
 };
 use crate::editor;
 use crate::executor::{CommandExecutor, ShellCommandExecutor};
@@ -30,6 +32,7 @@ pub struct RunSummary {
     pub scope: Option<String>,
     pub peek_files: Vec<String>,
     pub notes: Option<String>,
+    pub prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,12 +69,8 @@ impl ExplainSource {
         match self {
             Self::None => None,
             Self::Flag => Some("--explain flag".to_string()),
-            Self::ToolConfig(tool) => {
-                Some(format!("tool config ({tool}: force_explain)"))
-            }
-            Self::UnrestrictedMode => {
-                Some("unrestricted mode (mandatory inspection)".to_string())
-            }
+            Self::ToolConfig(tool) => Some(format!("tool config ({tool}: force_explain)")),
+            Self::UnrestrictedMode => Some("unrestricted mode (mandatory inspection)".to_string()),
         }
     }
 }
@@ -173,6 +172,7 @@ impl RunSummary {
             scope: cli.scope.clone(),
             peek_files: cli.peek.clone(),
             notes: None,
+            prompt: None,
         }
     }
 
@@ -187,6 +187,7 @@ impl RunSummary {
             scope: None,
             peek_files: Vec::new(),
             notes: None,
+            prompt: None,
         }
     }
 }
@@ -219,7 +220,13 @@ pub fn run() -> Result<()> {
 }
 
 fn requires_generator(cli: &Cli) -> bool {
-    !cli.init && cli.create_prompt.is_none() && cli.add_prompt.is_none() && !cli.list_tools
+    !cli.init
+        && cli.create_prompt.is_none()
+        && cli.add_prompt.is_none()
+        && !cli.list_tools
+        && !cli.commands_path
+        && !cli.list_commands
+        && cli.save.as_ref().is_none_or(|v| v.len() == 2)
 }
 
 fn run_and_log<G, E>(cli: Cli, generator: &G, executor: &E) -> i32
@@ -252,14 +259,7 @@ where
         }
     }
 
-    let entry = history_entry_for_run(
-        &cli,
-        argv,
-        &cwd,
-        exit_code,
-        summary.as_ref(),
-        notes,
-    );
+    let entry = history_entry_for_run(&cli, argv, &cwd, exit_code, summary.as_ref(), notes);
 
     if let Err(err) = history::write_entry(entry) {
         eprintln!("Warning: failed to write history: {:#}", err);
@@ -276,7 +276,7 @@ fn history_entry_for_run(
     summary: Option<&RunSummary>,
     notes: Option<String>,
 ) -> HistoryEntry {
-    let (confirm, explain, unsafe_mode, unrestricted, scope, peek_files, generated_command) =
+    let (confirm, explain, unsafe_mode, unrestricted, scope, peek_files, generated_command, prompt) =
         if let Some(summary) = summary {
             (
                 summary.confirm,
@@ -286,6 +286,7 @@ fn history_entry_for_run(
                 summary.scope.clone(),
                 summary.peek_files.clone(),
                 summary.generated_command.clone(),
+                summary.prompt.clone(),
             )
         } else {
             (
@@ -296,6 +297,7 @@ fn history_entry_for_run(
                 cli.scope.clone(),
                 cli.peek.clone(),
                 None,
+                None,
             )
         };
 
@@ -305,6 +307,7 @@ fn history_entry_for_run(
         argv,
         exit_code,
         generated_command,
+        prompt,
         unsafe_mode,
         unrestricted,
         confirm,
@@ -362,6 +365,22 @@ where
 {
     let global_config_path = find_global_config_path();
 
+    if cli.commands_path {
+        let cfg = load_global_config(&global_config_path)?;
+        println!("{}", commands_dir(&cfg).display());
+        let mut summary = RunSummary::from_cli(&cli);
+        summary.notes = Some("commands_path".into());
+        return Ok(summary);
+    }
+
+    if cli.list_commands {
+        let cfg = load_global_config(&global_config_path)?;
+        println!("{}", commands::format_listing(&commands::list(&cfg)?));
+        let mut summary = RunSummary::from_cli(&cli);
+        summary.notes = Some("list_commands".into());
+        return Ok(summary);
+    }
+
     if cli.init {
         ops::init_global_config(&global_config_path)?;
         let mut summary = RunSummary::from_cli(&cli);
@@ -391,6 +410,17 @@ where
     }
 
     let global_cfg = load_global_config(&global_config_path)?;
+
+    if let Some(save) = cli.save.as_ref().filter(|v| v.len() == 1) {
+        return freeze_latest(
+            &cli,
+            &global_cfg,
+            &global_config_path,
+            &save[0],
+            reader,
+            confirmation_output,
+        );
+    }
 
     let safety_mode = SafetyMode::from_cli(&cli);
 
@@ -457,18 +487,15 @@ where
     let tool_requires_explain = crate::prompt::should_force_explain(&prompt_cfg.tools, &cmd_line);
     // Under an unrestricted run mandatory inspection wins over every other
     // explanation source, so the card reports the effective reason.
-    let explain_source = ExplainSource::resolve(
-        safety_mode,
-        cli.explain,
-        tool_requires_explain,
-        &tokens[0],
-    );
+    let explain_source =
+        ExplainSource::resolve(safety_mode, cli.explain, tool_requires_explain, &tokens[0]);
     let effective_explain = explain_source.is_enabled();
     let effective_confirm =
         safety_mode.forces_inspection() || cli.confirm || cli.unsafe_mode || effective_explain;
 
     let mut summary = RunSummary::from_cli(&cli);
     summary.generated_command = Some(cmd_line.clone());
+    summary.prompt = Some(nl_prompt.clone());
     summary.explain = effective_explain;
     summary.confirm = effective_confirm;
 
@@ -476,10 +503,26 @@ where
         print_command_explanation(generator, &effective_ai, &cmd_line)?;
     }
 
-    let confirmed = if !effective_confirm {
+    let markers = risk_markers(&cmd_line);
+    let confirmed = if cli.save.is_some() {
+        let config_provenance = match prompt_source.as_deref() {
+            Some(path) => PromptConfigProvenance::PerCall(path),
+            None => PromptConfigProvenance::GlobalDefault(&global_config_path),
+        };
+        let card = PreflightCard {
+            prompt: &nl_prompt,
+            command: &cmd_line,
+            primary_tool: &tokens[0],
+            scope_hint: cli.scope.as_deref(),
+            safety_mode,
+            explain_source: &explain_source,
+            risk_markers: &markers,
+            config_provenance,
+        };
+        confirm_freeze(reader, confirmation_output, &card)?
+    } else if !effective_confirm {
         true
     } else {
-        let markers = risk_markers(&cmd_line);
         let config_provenance = match prompt_source.as_deref() {
             Some(path) => PromptConfigProvenance::PerCall(path),
             None => PromptConfigProvenance::GlobalDefault(&global_config_path),
@@ -509,9 +552,172 @@ where
         return Ok(summary);
     }
 
+    if let Some(save) = cli.save.as_ref() {
+        let prompt_config = prompt_source
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| global_config_path.display().to_string());
+        freeze(
+            command_from_parts(
+                &save[0],
+                &cmd_line,
+                tokens,
+                nl_prompt,
+                safety_mode,
+                &prompt_cfg.tools,
+                prompt_config,
+                &markers,
+            ),
+            &global_cfg,
+            &global_config_path,
+            reader,
+            confirmation_output,
+        )?;
+        summary.notes = Some("saved command".into());
+        return Ok(summary);
+    }
+
     let status = executor.execute(&cmd_line, &tokens, safety_mode.uses_shell())?;
     summary.exit_code = status;
     Ok(summary)
+}
+
+fn command_from_parts(
+    name: &str,
+    command: &str,
+    tokens: Vec<String>,
+    intent: String,
+    mode: SafetyMode,
+    tools: &[crate::config::ToolConfig],
+    prompt_config: String,
+    markers: &[RiskMarker],
+) -> FrozenCommand {
+    FrozenCommand {
+        name: name.into(),
+        command: command.into(),
+        tokens,
+        intent,
+        frozen_at: history::now_iso_ts(),
+        safety_mode: mode,
+        tools: tools.iter().map(|t| t.name.clone()).collect(),
+        prompt_config,
+        risk_markers: markers
+            .iter()
+            .map(|m| format!("[{}] {}", m.kind.label(), m.detail))
+            .collect(),
+    }
+}
+
+fn freeze_latest<R: BufRead, W: Write>(
+    cli: &Cli,
+    cfg: &crate::config::GlobalConfig,
+    config_path: &Path,
+    name: &str,
+    reader: &mut R,
+    output: &mut W,
+) -> Result<RunSummary> {
+    let entry = history::read_latest_entry()?
+        .filter(|e| e.generated_command.is_some())
+        .ok_or_else(|| {
+            anyhow!("There is nothing to freeze: no generated command was found in history")
+        })?;
+    let command = entry.generated_command.unwrap();
+    let mode = if entry.unrestricted {
+        SafetyMode::Unrestricted
+    } else if entry.unsafe_mode {
+        SafetyMode::Unsafe
+    } else {
+        SafetyMode::Default
+    };
+    let prompt = entry.prompt.unwrap_or_else(|| "unavailable".into());
+    let tokens = shell_words::split(&command).unwrap_or_else(|_| vec![command.clone()]);
+    let tool = tokens.first().cloned().unwrap_or_else(|| "unknown".into());
+    let explain = ExplainSource::None;
+    let markers = risk_markers(&command);
+    let card = PreflightCard {
+        prompt: &prompt,
+        command: &command,
+        primary_tool: &tool,
+        scope_hint: entry.scope.as_deref(),
+        safety_mode: mode,
+        explain_source: &explain,
+        risk_markers: &markers,
+        config_provenance: PromptConfigProvenance::GlobalDefault(config_path),
+    };
+    if !confirm_freeze(reader, output, &card)? {
+        let mut s = RunSummary::from_cli(cli);
+        s.notes = Some("cancelled".into());
+        return Ok(s);
+    }
+    let frozen = command_from_parts(
+        name,
+        &command,
+        tokens,
+        prompt,
+        mode,
+        &[],
+        config_path.display().to_string(),
+        &markers,
+    );
+    freeze(frozen, cfg, config_path, reader, output)?;
+    let mut s = RunSummary::from_cli(cli);
+    s.generated_command = Some(command);
+    s.notes = Some("saved command".into());
+    Ok(s)
+}
+
+fn freeze<R: BufRead, W: Write>(
+    frozen: FrozenCommand,
+    cfg: &crate::config::GlobalConfig,
+    config_path: &Path,
+    reader: &mut R,
+    output: &mut W,
+) -> Result<()> {
+    commands::validate_name(&frozen.name)?;
+    if frozen.safety_mode.is_unrestricted() && !cfg.allows_unrestricted() {
+        return Err(anyhow!(
+            "Cannot freeze an unrestricted command: disabled by {}",
+            config_path.display()
+        ));
+    }
+    let target = commands_dir(cfg).join(&frozen.name);
+    if !target.exists() {
+        if let Some(path) = ops::program_on_path(&frozen.name) {
+            return Err(anyhow!(
+                "Cannot freeze '{}': it already resolves on PATH to {}",
+                frozen.name,
+                path.display()
+            ));
+        }
+    }
+    if target.exists() {
+        write!(
+            output,
+            "Replace existing frozen command '{}'? [y/N] ",
+            frozen.name
+        )?;
+        output.flush()?;
+        if !matches!(read_answer(reader)?.as_str(), "y" | "yes") {
+            return Ok(());
+        }
+    }
+    let path = commands::write(&frozen, cfg)?;
+    eprintln!("Frozen command written to {}", path.display());
+    Ok(())
+}
+
+fn confirm_freeze(
+    reader: &mut dyn BufRead,
+    output: &mut dyn Write,
+    card: &PreflightCard<'_>,
+) -> Result<bool> {
+    print_preflight_card(output, card)?;
+    write!(output, "Freeze this command? [y/N] ")?;
+    output.flush()?;
+    matches!(read_answer(reader)?.as_str(), "y" | "yes")
+        .then_some(true)
+        .ok_or_else(|| anyhow!("freeze declined"))
+        .or(Ok(false))
 }
 
 /// Obtain the natural language prompt for this run.
@@ -859,11 +1065,7 @@ default_prompt:
             &mut output,
         )
         .unwrap();
-        (
-            summary,
-            executor.ran(),
-            String::from_utf8(output).unwrap(),
-        )
+        (summary, executor.ran(), String::from_utf8(output).unwrap())
     }
 
     #[test]
@@ -1011,7 +1213,10 @@ default_prompt:
             "echo hello",
         );
         assert!(direct_ran);
-        assert!(direct_output.is_empty(), "direct runs must not build or print a card");
+        assert!(
+            direct_output.is_empty(),
+            "direct runs must not build or print a card"
+        );
     }
 
     #[test]
@@ -1045,7 +1250,11 @@ default_prompt:
         .unwrap();
 
         assert!(explained.get());
-        assert!(String::from_utf8(output.bytes).unwrap().starts_with("Preflight:\n"));
+        assert!(
+            String::from_utf8(output.bytes)
+                .unwrap()
+                .starts_with("Preflight:\n")
+        );
     }
 
     #[test]
@@ -1216,7 +1425,10 @@ default_prompt:
         assert_eq!(stored.exit_code, 23);
         assert_eq!(stored.generated_command.as_deref(), Some("echo hello"));
         assert_eq!(stored.scope.as_deref(), Some("./logs"));
-        assert_eq!(stored.peek_files, vec![sample_path.to_string_lossy().to_string()]);
+        assert_eq!(
+            stored.peek_files,
+            vec![sample_path.to_string_lossy().to_string()]
+        );
     }
 
     #[test]
@@ -1284,8 +1496,14 @@ default_prompt:
         for (mode, cli, command) in cases {
             let (_, _, output) = run_with_output(cli, b"n\n", command);
             assert!(output.starts_with("Preflight:\n"), "{mode}:\n{output}");
-            assert!(output.contains(command), "{mode} truncated its command:\n{output}");
-            assert!(!output.contains('\u{1b}'), "{mode} emitted terminal-only styling");
+            assert!(
+                output.contains(command),
+                "{mode} truncated its command:\n{output}"
+            );
+            assert!(
+                !output.contains('\u{1b}'),
+                "{mode} emitted terminal-only styling"
+            );
             assert!(
                 output.lines().count() <= 11,
                 "{mode} card is not compact:\n{output}"

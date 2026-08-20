@@ -9,6 +9,7 @@ Available help topics:
   safety       Safety model, operator blocking, confirmation
   explain      Explain generated commands before running them
   analyze      Analyze the last sai invocation
+  commands     Freeze and list deterministic commands
   history      Where history is stored and how it is used
   packages     Built-in prompt configs under prompts/
   ops          Helper commands (--init, --add-prompt, --list-tools)

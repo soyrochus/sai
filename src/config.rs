@@ -17,6 +17,15 @@ pub struct GlobalConfig {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub safety: Option<SafetySettings>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commands: Option<CommandsSettings>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct CommandsSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dir: Option<PathBuf>,
 }
 
 /// Machine-level limits on which safety modes may be used at all.
@@ -162,6 +171,16 @@ pub fn config_root_dir() -> PathBuf {
 
 pub fn find_global_config_path() -> PathBuf {
     config_root_dir().join("config.yaml")
+}
+
+/// Resolve the command catalog without creating it. Relative overrides are
+/// interpreted relative to the configuration root, making configs portable.
+pub fn commands_dir(config: &GlobalConfig) -> PathBuf {
+    match config.commands.as_ref().and_then(|c| c.dir.as_ref()) {
+        Some(path) if path.is_absolute() => path.clone(),
+        Some(path) => config_root_dir().join(path),
+        None => config_root_dir().join("bin"),
+    }
 }
 
 #[cfg(test)]

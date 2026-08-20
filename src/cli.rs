@@ -28,6 +28,18 @@ pub struct Cli {
     #[arg(long = "list-tools")]
     pub list_tools: bool,
 
+    /// Print the directory containing frozen commands
+    #[arg(long = "commands-path")]
+    pub commands_path: bool,
+
+    /// List frozen commands
+    #[arg(long = "list-commands")]
+    pub list_commands: bool,
+
+    /// Freeze the latest command, or generate and freeze from an optional prompt
+    #[arg(long, value_names = ["NAME", "PROMPT"], num_args = 1..=2)]
+    pub save: Option<Vec<String>>,
+
     /// Analyze the latest SAI invocation and explain what happened
     #[arg(
         long,
@@ -132,6 +144,16 @@ pub fn resolve_prompt_config_path(cli: &Cli) -> Option<String> {
 /// In advanced mode (`sai cfg.yaml "text"`) that is the second positional.
 /// Everywhere else a lone positional is the prompt itself.
 fn prompt_argument(cli: &Cli) -> Option<String> {
+    if let Some(values) = cli.save.as_ref()
+        && values.len() == 2
+    {
+        return Some(values[1].clone());
+    }
+    if let Some(values) = cli.save.as_ref()
+        && values.len() == 2
+    {
+        return Some(values[1].clone());
+    }
     if cli.prompt.is_some() {
         return cli.prompt.clone();
     }
@@ -196,6 +218,20 @@ mod tests {
             PromptSource::Argument("find large files".to_string())
         );
         assert_eq!(resolve_prompt_config_path(&cli), None);
+    }
+
+    #[test]
+    fn save_accepts_a_name_and_optional_prompt() {
+        assert_eq!(
+            parse(&["--save", "cleanlogs"]).save.unwrap(),
+            vec!["cleanlogs"]
+        );
+        let cli = parse(&["--save", "cleanlogs", "remove old logs"]);
+        assert_eq!(cli.save.as_ref().unwrap().len(), 2);
+        assert_eq!(
+            resolve_prompt_source(&cli, true),
+            PromptSource::Argument("remove old logs".into())
+        );
     }
 
     #[test]

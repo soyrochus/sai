@@ -317,6 +317,7 @@ pub fn init_global_config(path: &Path) -> Result<()> {
     println!(
         "Update the placeholder API credentials and add tools (e.g. with 'sai --add-prompt ...') before running sai."
     );
+    println!(r#"export PATH="$(sai --commands-path):$PATH""#);
 
     Ok(())
 }
@@ -340,27 +341,25 @@ fn sanitize_filename(name: &str) -> String {
     sanitized
 }
 
-fn availability_status(tool: &str) -> &'static str {
+pub fn program_on_path(tool: &str) -> Option<PathBuf> {
     if Path::new(tool).is_absolute() {
-        return if Path::new(tool).exists() {
-            "[x]"
-        } else {
-            "[ ]"
-        };
+        return Path::new(tool).is_file().then(|| PathBuf::from(tool));
     }
 
-    env::var_os("PATH")
-        .and_then(|paths| {
-            env::split_paths(&paths).find_map(|dir| {
-                let candidate = dir.join(tool);
-                if candidate.is_file() {
-                    Some("[x]")
-                } else {
-                    None
-                }
-            })
+    env::var_os("PATH").and_then(|paths| {
+        env::split_paths(&paths).find_map(|dir| {
+            let candidate = dir.join(tool);
+            candidate.is_file().then_some(candidate)
         })
-        .unwrap_or("[ ]")
+    })
+}
+
+fn availability_status(tool: &str) -> &'static str {
+    if program_on_path(tool).is_some() {
+        "[x]"
+    } else {
+        "[ ]"
+    }
 }
 
 #[cfg(test)]

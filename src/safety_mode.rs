@@ -20,6 +20,25 @@ pub enum SafetyMode {
 }
 
 impl SafetyMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Unsafe => "unsafe",
+            Self::Unrestricted => "unrestricted",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "default" => Some(Self::Default),
+            "unsafe" => Some(Self::Unsafe),
+            "unrestricted" => Some(Self::Unrestricted),
+            _ => None,
+        }
+    }
+}
+
+impl SafetyMode {
     /// Which mode this invocation runs in. `--unrestricted` wins over
     /// `--unsafe`, since it is strictly the broader of the two.
     pub fn from_cli(cli: &Cli) -> Self {

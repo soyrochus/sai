@@ -183,3 +183,6 @@ default_prompt:
       - Use format flags only if explicitly requested.
       Output format:
       - stat file
+# Optional frozen-command directory (relative paths use SAI's config directory).
+# commands:
+#   dir: bin
