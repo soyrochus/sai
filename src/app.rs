@@ -11,7 +11,7 @@ use crate::ops;
 use crate::peek::build_peek_context;
 use crate::prompt::build_system_prompt;
 use crate::prompt_history;
-use crate::safety::{risk_markers, validate_and_split_command};
+use crate::safety::{RiskMarker, risk_markers, validate_and_split_command};
 use crate::safety_mode::SafetyMode;
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
@@ -30,6 +30,135 @@ pub struct RunSummary {
     pub scope: Option<String>,
     pub peek_files: Vec<String>,
     pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ExplainSource {
+    None,
+    Flag,
+    ToolConfig(String),
+    UnrestrictedMode,
+}
+
+impl ExplainSource {
+    fn resolve(
+        safety_mode: SafetyMode,
+        explain_flag: bool,
+        tool_requires_explain: bool,
+        primary_tool: &str,
+    ) -> Self {
+        if safety_mode.forces_inspection() {
+            Self::UnrestrictedMode
+        } else if explain_flag {
+            Self::Flag
+        } else if tool_requires_explain {
+            Self::ToolConfig(primary_tool.to_string())
+        } else {
+            Self::None
+        }
+    }
+
+    fn is_enabled(&self) -> bool {
+        !matches!(self, Self::None)
+    }
+
+    fn card_value(&self) -> Option<String> {
+        match self {
+            Self::None => None,
+            Self::Flag => Some("--explain flag".to_string()),
+            Self::ToolConfig(tool) => {
+                Some(format!("tool config ({tool}: force_explain)"))
+            }
+            Self::UnrestrictedMode => {
+                Some("unrestricted mode (mandatory inspection)".to_string())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PromptConfigProvenance<'a> {
+    GlobalDefault(&'a Path),
+    PerCall(&'a Path),
+}
+
+#[derive(Debug)]
+struct PreflightCard<'a> {
+    prompt: &'a str,
+    command: &'a str,
+    primary_tool: &'a str,
+    scope_hint: Option<&'a str>,
+    safety_mode: SafetyMode,
+    explain_source: &'a ExplainSource,
+    risk_markers: &'a [RiskMarker],
+    config_provenance: PromptConfigProvenance<'a>,
+}
+
+impl PreflightCard<'_> {
+    fn render(&self) -> String {
+        const LABEL_WIDTH: usize = 9;
+
+        fn push_field(lines: &mut Vec<String>, label: &str, value: &str) {
+            const LABEL_WIDTH: usize = 9;
+            for (index, value_line) in value.split('\n').enumerate() {
+                let rendered_label = if index == 0 {
+                    format!("{label}:")
+                } else {
+                    String::new()
+                };
+                lines.push(format!(
+                    "  {rendered_label:<LABEL_WIDTH$}{value_line}",
+                    LABEL_WIDTH = LABEL_WIDTH
+                ));
+            }
+        }
+
+        let mut lines = vec!["Preflight:".to_string()];
+        push_field(&mut lines, "Prompt", self.prompt);
+        push_field(&mut lines, "Command", self.command);
+        push_field(&mut lines, "Tool", self.primary_tool);
+        if let Some(scope_hint) = self.scope_hint {
+            push_field(&mut lines, "Scope", scope_hint);
+        }
+
+        let safety_mode = match self.safety_mode {
+            SafetyMode::Default => "default",
+            SafetyMode::Unsafe => "unsafe",
+            SafetyMode::Unrestricted => "unrestricted",
+        };
+        push_field(&mut lines, "Safety", safety_mode);
+
+        if let Some(explain_source) = self.explain_source.card_value() {
+            push_field(&mut lines, "Explain", &explain_source);
+        }
+
+        if self.risk_markers.is_empty() {
+            push_field(&mut lines, "Risk", "none found");
+        } else {
+            for (index, marker) in self.risk_markers.iter().enumerate() {
+                let label = if index == 0 { "Risk:" } else { "" };
+                lines.push(format!(
+                    "  {label:<LABEL_WIDTH$}[{}] {}",
+                    marker.kind.label(),
+                    marker.detail,
+                    LABEL_WIDTH = LABEL_WIDTH
+                ));
+            }
+        }
+
+        let config = match self.config_provenance {
+            PromptConfigProvenance::GlobalDefault(path) => {
+                format!("global default ({})", path.display())
+            }
+            PromptConfigProvenance::PerCall(path) => {
+                format!("per-call prompt config ({})", path.display())
+            }
+        };
+        push_field(&mut lines, "Config", &config);
+
+        debug_assert!(LABEL_WIDTH >= "Explain:".len());
+        lines.join("\n")
+    }
 }
 
 impl RunSummary {
@@ -123,22 +252,46 @@ where
         }
     }
 
+    let entry = history_entry_for_run(
+        &cli,
+        argv,
+        &cwd,
+        exit_code,
+        summary.as_ref(),
+        notes,
+    );
+
+    if let Err(err) = history::write_entry(entry) {
+        eprintln!("Warning: failed to write history: {:#}", err);
+    }
+
+    exit_code
+}
+
+fn history_entry_for_run(
+    cli: &Cli,
+    argv: Vec<String>,
+    cwd: &Path,
+    exit_code: i32,
+    summary: Option<&RunSummary>,
+    notes: Option<String>,
+) -> HistoryEntry {
     let (confirm, explain, unsafe_mode, unrestricted, scope, peek_files, generated_command) =
-        if let Some(ref s) = summary {
+        if let Some(summary) = summary {
             (
-                s.confirm,
-                s.explain,
-                s.unsafe_mode,
-                s.unrestricted,
-                s.scope.clone(),
-                s.peek_files.clone(),
-                s.generated_command.clone(),
+                summary.confirm,
+                summary.explain,
+                summary.unsafe_mode,
+                summary.unrestricted,
+                summary.scope.clone(),
+                summary.peek_files.clone(),
+                summary.generated_command.clone(),
             )
         } else {
             (
                 cli.confirm || cli.unsafe_mode || cli.explain,
                 cli.explain,
-                SafetyMode::from_cli(&cli).is_unsafe_for_history(),
+                SafetyMode::from_cli(cli).is_unsafe_for_history(),
                 cli.unrestricted,
                 cli.scope.clone(),
                 cli.peek.clone(),
@@ -146,7 +299,7 @@ where
             )
         };
 
-    let entry = HistoryEntry {
+    HistoryEntry {
         ts: history::now_iso_ts(),
         cwd: cwd.to_string_lossy().to_string(),
         argv,
@@ -159,13 +312,7 @@ where
         scope,
         peek_files,
         notes,
-    };
-
-    if let Err(err) = history::write_entry(entry) {
-        eprintln!("Warning: failed to write history: {:#}", err);
     }
-
-    exit_code
 }
 
 #[allow(dead_code)]
@@ -189,6 +336,29 @@ where
     G: CommandGenerator + ChatClient,
     E: CommandExecutor,
     R: BufRead,
+{
+    let mut confirmation_output = io::stderr();
+    run_with_reader_and_confirmation_output(
+        cli,
+        generator,
+        executor,
+        reader,
+        &mut confirmation_output,
+    )
+}
+
+fn run_with_reader_and_confirmation_output<G, E, R, W>(
+    cli: Cli,
+    generator: &G,
+    executor: &E,
+    reader: &mut R,
+    confirmation_output: &mut W,
+) -> Result<RunSummary>
+where
+    G: CommandGenerator + ChatClient,
+    E: CommandExecutor,
+    R: BufRead,
+    W: Write,
 {
     let global_config_path = find_global_config_path();
 
@@ -285,9 +455,15 @@ where
 
     // Check if the generated command uses a tool that requires forced explain mode
     let tool_requires_explain = crate::prompt::should_force_explain(&prompt_cfg.tools, &cmd_line);
-    // Under an unrestricted run these are true unconditionally: no flag, config
-    // value or per-tool setting is consulted, so nothing can suppress them.
-    let effective_explain = safety_mode.forces_inspection() || cli.explain || tool_requires_explain;
+    // Under an unrestricted run mandatory inspection wins over every other
+    // explanation source, so the card reports the effective reason.
+    let explain_source = ExplainSource::resolve(
+        safety_mode,
+        cli.explain,
+        tool_requires_explain,
+        &tokens[0],
+    );
+    let effective_explain = explain_source.is_enabled();
     let effective_confirm =
         safety_mode.forces_inspection() || cli.confirm || cli.unsafe_mode || effective_explain;
 
@@ -296,35 +472,34 @@ where
     summary.explain = effective_explain;
     summary.confirm = effective_confirm;
 
-    if tool_requires_explain && !cli.explain {
-        eprintln!("Note: This tool requires explanation mode (force_explain is enabled)");
-        eprintln!();
-    }
-
     if effective_explain {
         print_command_explanation(generator, &effective_ai, &cmd_line)?;
     }
 
     let confirmed = if !effective_confirm {
         true
-    } else if safety_mode.is_unrestricted() {
-        confirm_unrestricted(
-            reader,
-            &global_config_path,
-            prompt_source.as_deref(),
-            &nl_prompt,
-            cli.scope.as_deref(),
-            &cmd_line,
-        )?
     } else {
-        confirm(
-            reader,
-            &global_config_path,
-            prompt_source.as_deref(),
-            &nl_prompt,
-            cli.scope.as_deref(),
-            &cmd_line,
-        )?
+        let markers = risk_markers(&cmd_line);
+        let config_provenance = match prompt_source.as_deref() {
+            Some(path) => PromptConfigProvenance::PerCall(path),
+            None => PromptConfigProvenance::GlobalDefault(&global_config_path),
+        };
+        let card = PreflightCard {
+            prompt: &nl_prompt,
+            command: &cmd_line,
+            primary_tool: &tokens[0],
+            scope_hint: cli.scope.as_deref(),
+            safety_mode,
+            explain_source: &explain_source,
+            risk_markers: &markers,
+            config_provenance,
+        };
+
+        if safety_mode.is_unrestricted() {
+            confirm_unrestricted(reader, confirmation_output, &card)?
+        } else {
+            confirm(reader, confirmation_output, &card)?
+        }
     };
 
     if !confirmed {
@@ -367,38 +542,14 @@ where
 
 /// Read one line of answer from `reader`.
 fn read_answer(reader: &mut dyn BufRead) -> Result<String> {
-    io::stdout().flush().ok();
     let mut buf = String::new();
     reader.read_line(&mut buf)?;
     Ok(buf.trim().to_lowercase())
 }
 
-/// Print the shared header both confirmations show.
-fn print_confirm_context(
-    global_cfg_path: &Path,
-    prompt_cfg_path: Option<&Path>,
-    nl_prompt: &str,
-    scope_hint: Option<&str>,
-    cmd_line: &str,
-) {
-    eprintln!("Global config file: {}", global_cfg_path.display());
-    if let Some(p) = prompt_cfg_path {
-        eprintln!("Prompt config file: {}", p.display());
-    } else {
-        eprintln!("Prompt config: default_prompt from global config");
-    }
-    eprintln!();
-    eprintln!("Natural language prompt:");
-    eprintln!("  {}", nl_prompt);
-    eprintln!();
-    if let Some(scope) = scope_hint {
-        eprintln!("Scope hint:");
-        eprintln!("  {}", scope);
-        eprintln!();
-    }
-    eprintln!("LLM output (command):");
-    eprintln!("  {}", cmd_line);
-    eprintln!();
+fn print_preflight_card(output: &mut dyn Write, card: &PreflightCard<'_>) -> Result<()> {
+    writeln!(output, "{}", card.render()).context("Failed to write preflight card")?;
+    Ok(())
 }
 
 /// The confirmation shown under `--unrestricted`.
@@ -408,54 +559,28 @@ fn print_confirm_context(
 /// command is unbounded, so muscle memory should not be enough.
 fn confirm_unrestricted(
     reader: &mut dyn BufRead,
-    global_cfg_path: &Path,
-    prompt_cfg_path: Option<&Path>,
-    nl_prompt: &str,
-    scope_hint: Option<&str>,
-    cmd_line: &str,
+    output: &mut dyn Write,
+    card: &PreflightCard<'_>,
 ) -> Result<bool> {
-    print_confirm_context(
-        global_cfg_path,
-        prompt_cfg_path,
-        nl_prompt,
-        scope_hint,
-        cmd_line,
-    );
-
-    // Locally computed, unlike the explanation above, which came from the same
-    // model that wrote the command.
-    let markers = risk_markers(cmd_line);
-    if !markers.is_empty() {
-        eprintln!("Risk markers (computed locally, not by the model):");
-        for marker in &markers {
-            eprintln!("  [{}] {}", marker.kind.label(), marker.detail);
-        }
-        eprintln!();
-    }
-
-    eprintln!("UNRESTRICTED: no tool whitelist is in effect for this command.");
-    eprint!("Type 'yes' to execute: ");
+    print_preflight_card(output, card)?;
+    writeln!(
+        output,
+        "UNRESTRICTED: no tool whitelist is in effect for this command."
+    )?;
+    write!(output, "Type 'yes' to execute: ")?;
+    output.flush()?;
 
     Ok(read_answer(reader)? == "yes")
 }
 
 fn confirm(
     reader: &mut dyn BufRead,
-    global_cfg_path: &Path,
-    prompt_cfg_path: Option<&Path>,
-    nl_prompt: &str,
-    scope_hint: Option<&str>,
-    cmd_line: &str,
+    output: &mut dyn Write,
+    card: &PreflightCard<'_>,
 ) -> Result<bool> {
-    print_confirm_context(
-        global_cfg_path,
-        prompt_cfg_path,
-        nl_prompt,
-        scope_hint,
-        cmd_line,
-    );
-
-    eprint!("Execute this command? [y/N] ");
+    print_preflight_card(output, card)?;
+    write!(output, "Execute this command? [y/N] ")?;
+    output.flush()?;
     let ans = read_answer(reader)?;
     Ok(ans == "y" || ans == "yes")
 }
@@ -551,6 +676,7 @@ mod tests {
     use crate::cli::Cli;
     use crate::config::set_config_dir_override_for_tests;
     use crate::llm::{ChatClient, CommandGenerator};
+    use crate::safety::RiskKind;
     use std::cell::Cell;
     use std::fs;
     use std::io::Cursor;
@@ -596,12 +722,78 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
+    struct ExplanationTrackingGenerator<'a> {
+        explained: &'a Cell<bool>,
+    }
+
+    impl CommandGenerator for ExplanationTrackingGenerator<'_> {
+        fn generate(
+            &self,
+            _ai: &crate::config::EffectiveAiConfig,
+            _system_prompt: &str,
+            _nl_prompt: &str,
+            _scope_hint: Option<&str>,
+            _peek_text: Option<&str>,
+        ) -> Result<String> {
+            Ok("echo hello".to_string())
+        }
+    }
+
+    impl ChatClient for ExplanationTrackingGenerator<'_> {
+        fn respond(
+            &self,
+            _ai: &crate::config::EffectiveAiConfig,
+            _system_prompt: &str,
+            _user_prompt: &str,
+            _temperature: f32,
+        ) -> Result<String> {
+            self.explained.set(true);
+            Ok("prints hello".to_string())
+        }
+    }
+
+    struct AfterExplanationWriter<'a> {
+        explained: &'a Cell<bool>,
+        bytes: Vec<u8>,
+    }
+
+    impl Write for AfterExplanationWriter<'_> {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            assert!(
+                self.explained.get(),
+                "the explanation must complete before the card is written"
+            );
+            self.bytes.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
     struct RecordingExecutor {
         ran: Cell<bool>,
+        status: i32,
+    }
+
+    impl Default for RecordingExecutor {
+        fn default() -> Self {
+            Self {
+                ran: Cell::new(false),
+                status: 0,
+            }
+        }
     }
 
     impl RecordingExecutor {
+        fn with_status(status: i32) -> Self {
+            Self {
+                ran: Cell::new(false),
+                status,
+            }
+        }
+
         fn ran(&self) -> bool {
             self.ran.get()
         }
@@ -610,7 +802,7 @@ mod tests {
     impl CommandExecutor for RecordingExecutor {
         fn execute(&self, _cmd_line: &str, _tokens: &[String], _unsafe_mode: bool) -> Result<i32> {
             self.ran.set(true);
-            Ok(0)
+            Ok(self.status)
         }
     }
 
@@ -627,6 +819,479 @@ default_prompt:
       config: "echo tool"
 "#;
         fs::write(dir.join("config.yaml"), cfg).unwrap();
+    }
+
+    fn write_config_with_tools(dir: &Path) {
+        fs::create_dir_all(dir).unwrap();
+        let cfg = r#"
+ai:
+  provider: openai
+  openai_api_key: test-key
+  openai_model: test-model
+default_prompt:
+  tools:
+    - name: echo
+      config: "echo tool"
+    - name: rm
+      config: "remove files"
+    - name: forced
+      config: "forced explanation tool"
+      force_explain: true
+"#;
+        fs::write(dir.join("config.yaml"), cfg).unwrap();
+    }
+
+    fn run_with_output(cli: Cli, input: &[u8], command: &str) -> (RunSummary, bool, String) {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_config_with_tools(&config_root);
+
+        let generator = StubGenerator::new(command, "explanation");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(input.to_vec());
+        let mut output = Vec::new();
+        let summary = run_with_reader_and_confirmation_output(
+            cli,
+            &generator,
+            &executor,
+            &mut reader,
+            &mut output,
+        )
+        .unwrap();
+        (
+            summary,
+            executor.ran(),
+            String::from_utf8(output).unwrap(),
+        )
+    }
+
+    #[test]
+    fn explain_source_resolves_effective_precedence() {
+        assert_eq!(
+            ExplainSource::resolve(SafetyMode::Unrestricted, true, true, "forced"),
+            ExplainSource::UnrestrictedMode,
+            "mandatory unrestricted inspection must outrank all optional sources"
+        );
+        assert_eq!(
+            ExplainSource::resolve(SafetyMode::Default, true, true, "forced"),
+            ExplainSource::Flag,
+            "an explicit flag must outrank a tool setting"
+        );
+        assert_eq!(
+            ExplainSource::resolve(SafetyMode::Default, false, true, "forced"),
+            ExplainSource::ToolConfig("forced".to_string())
+        );
+        assert_eq!(
+            ExplainSource::resolve(SafetyMode::Default, false, false, "echo"),
+            ExplainSource::None
+        );
+    }
+
+    #[test]
+    fn preflight_card_renders_every_applicable_field_and_multiple_markers() {
+        let explain_source = ExplainSource::ToolConfig("forced".to_string());
+        let markers = vec![
+            RiskMarker {
+                kind: RiskKind::Operator,
+                detail: "contains |".to_string(),
+            },
+            RiskMarker {
+                kind: RiskKind::Destructive,
+                detail: "rm — recursive and forced deletion".to_string(),
+            },
+        ];
+        let card = PreflightCard {
+            prompt: "clean generated files",
+            command: "rm -rf target | tee cleanup.log",
+            primary_tool: "rm",
+            scope_hint: Some("./target"),
+            safety_mode: SafetyMode::Unsafe,
+            explain_source: &explain_source,
+            risk_markers: &markers,
+            config_provenance: PromptConfigProvenance::PerCall(Path::new("prompt.yml")),
+        };
+
+        let rendered = card.render();
+        for expected in [
+            "Preflight:",
+            "Prompt:  clean generated files",
+            "Command: rm -rf target | tee cleanup.log",
+            "Tool:    rm",
+            "Scope:   ./target",
+            "Safety:  unsafe",
+            "Explain: tool config (forced: force_explain)",
+            "Risk:    [shell operators] contains |",
+            "         [destructive] rm — recursive and forced deletion",
+            "Config:  per-call prompt config (prompt.yml)",
+        ] {
+            assert!(
+                rendered.contains(expected),
+                "card should contain {expected:?}:\n{rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn preflight_card_omits_inapplicable_fields_and_states_no_risk() {
+        let explain_source = ExplainSource::None;
+        let card = PreflightCard {
+            prompt: "say hi",
+            command: "echo hello",
+            primary_tool: "echo",
+            scope_hint: None,
+            safety_mode: SafetyMode::Default,
+            explain_source: &explain_source,
+            risk_markers: &[],
+            config_provenance: PromptConfigProvenance::GlobalDefault(Path::new("config.yaml")),
+        };
+
+        let rendered = card.render();
+        assert!(!rendered.contains("Scope:"));
+        assert!(!rendered.contains("Explain:"));
+        assert!(rendered.contains("Risk:    none found"));
+        assert!(rendered.contains("Config:  global default (config.yaml)"));
+    }
+
+    #[test]
+    fn preflight_card_never_truncates_the_command() {
+        let explain_source = ExplainSource::Flag;
+        let command = format!("echo {}", "x".repeat(240));
+        let card = PreflightCard {
+            prompt: "print a long value",
+            command: &command,
+            primary_tool: "echo",
+            scope_hint: None,
+            safety_mode: SafetyMode::Default,
+            explain_source: &explain_source,
+            risk_markers: &[],
+            config_provenance: PromptConfigProvenance::GlobalDefault(Path::new("config.yaml")),
+        };
+
+        assert!(card.render().contains(&command));
+    }
+
+    #[test]
+    fn card_precedes_each_confirmation_but_not_direct_execution() {
+        let (_, ordinary_ran, ordinary_output) = run_with_output(
+            Cli {
+                confirm: true,
+                arg1: Some("say hi".to_string()),
+                ..Default::default()
+            },
+            b"y\n",
+            "echo hello",
+        );
+        assert!(ordinary_ran);
+        assert!(ordinary_output.starts_with("Preflight:\n"));
+        assert!(ordinary_output.ends_with("Execute this command? [y/N] "));
+
+        let (_, unrestricted_ran, unrestricted_output) = run_with_output(
+            Cli {
+                unrestricted: true,
+                arg1: Some("search for hello".to_string()),
+                ..Default::default()
+            },
+            b"yes\n",
+            "ripgrep hello",
+        );
+        assert!(unrestricted_ran);
+        assert!(unrestricted_output.starts_with("Preflight:\n"));
+        let card = unrestricted_output.find("Preflight:").unwrap();
+        let announcement = unrestricted_output.find("UNRESTRICTED:").unwrap();
+        let prompt = unrestricted_output.find("Type 'yes' to execute: ").unwrap();
+        assert!(card < announcement && announcement < prompt);
+
+        let (_, direct_ran, direct_output) = run_with_output(
+            Cli {
+                arg1: Some("say hi".to_string()),
+                ..Default::default()
+            },
+            b"",
+            "echo hello",
+        );
+        assert!(direct_ran);
+        assert!(direct_output.is_empty(), "direct runs must not build or print a card");
+    }
+
+    #[test]
+    fn explanation_is_completed_before_the_card_is_written() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+
+        let explained = Cell::new(false);
+        let generator = ExplanationTrackingGenerator {
+            explained: &explained,
+        };
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(b"n\n".to_vec());
+        let mut output = AfterExplanationWriter {
+            explained: &explained,
+            bytes: Vec::new(),
+        };
+        run_with_reader_and_confirmation_output(
+            Cli {
+                explain: true,
+                arg1: Some("say hi".to_string()),
+                ..Default::default()
+            },
+            &generator,
+            &executor,
+            &mut reader,
+            &mut output,
+        )
+        .unwrap();
+
+        assert!(explained.get());
+        assert!(String::from_utf8(output.bytes).unwrap().starts_with("Preflight:\n"));
+    }
+
+    #[test]
+    fn force_explain_tool_is_named_as_the_effective_source() {
+        let (summary, ran, output) = run_with_output(
+            Cli {
+                arg1: Some("perform forced action".to_string()),
+                ..Default::default()
+            },
+            b"n\n",
+            "forced action",
+        );
+
+        assert!(summary.explain && summary.confirm);
+        assert!(!ran);
+        assert!(output.contains("Explain: tool config (forced: force_explain)"));
+    }
+
+    #[test]
+    fn risk_markers_appear_on_unsafe_and_ordinary_confirmations() {
+        let (_, _, unsafe_output) = run_with_output(
+            Cli {
+                unsafe_mode: true,
+                arg1: Some("pipe two commands".to_string()),
+                ..Default::default()
+            },
+            b"n\n",
+            "echo first | echo second",
+        );
+        assert!(unsafe_output.contains("Safety:  unsafe"));
+        assert!(unsafe_output.contains("[shell operators] contains |"));
+
+        let (_, _, ordinary_output) = run_with_output(
+            Cli {
+                confirm: true,
+                arg1: Some("remove generated files".to_string()),
+                ..Default::default()
+            },
+            b"n\n",
+            "rm -rf target",
+        );
+        assert!(ordinary_output.contains("Safety:  default"));
+        assert!(ordinary_output.contains("[destructive] rm — recursive and forced deletion"));
+    }
+
+    #[test]
+    fn card_scope_is_present_only_when_supplied() {
+        let (_, _, with_scope) = run_with_output(
+            Cli {
+                confirm: true,
+                scope: Some("./logs".to_string()),
+                arg1: Some("say hi".to_string()),
+                ..Default::default()
+            },
+            b"n\n",
+            "echo hello",
+        );
+        assert!(with_scope.contains("Scope:   ./logs"));
+
+        let (_, _, without_scope) = run_with_output(
+            Cli {
+                confirm: true,
+                arg1: Some("say hi".to_string()),
+                ..Default::default()
+            },
+            b"n\n",
+            "echo hello",
+        );
+        assert!(!without_scope.contains("Scope:"));
+    }
+
+    #[test]
+    fn card_reports_global_and_per_call_config_provenance() {
+        let (_, _, global_output) = run_with_output(
+            Cli {
+                confirm: true,
+                arg1: Some("say hi".to_string()),
+                ..Default::default()
+            },
+            b"n\n",
+            "echo hello",
+        );
+        assert!(global_output.contains("Config:  global default ("));
+        assert!(global_output.contains("config.yaml)"));
+
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+        let prompt_path = temp.path().join("prompt.yml");
+        fs::write(
+            &prompt_path,
+            "tools:\n  - name: echo\n    config: \"echo tool\"\n",
+        )
+        .unwrap();
+
+        let cli = Cli {
+            confirm: true,
+            prompt_config: Some(prompt_path.to_string_lossy().to_string()),
+            arg1: Some("say hi".to_string()),
+            ..Default::default()
+        };
+        let generator = StubGenerator::new("echo hello", "explanation");
+        let executor = RecordingExecutor::default();
+        let mut reader = Cursor::new(b"n\n".to_vec());
+        let mut output = Vec::new();
+        run_with_reader_and_confirmation_output(
+            cli,
+            &generator,
+            &executor,
+            &mut reader,
+            &mut output,
+        )
+        .unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains(&format!(
+            "Config:  per-call prompt config ({})",
+            prompt_path.display()
+        )));
+    }
+
+    #[test]
+    fn card_preserves_executor_exit_code_and_execution_history_fields() {
+        let temp = TempDir::new().unwrap();
+        let config_root = temp.path().join("config");
+        let _guard = set_config_dir_override_for_tests(&config_root);
+        write_minimal_config(&config_root);
+        let sample_path = temp.path().join("sample.log");
+        fs::write(&sample_path, "hello\n").unwrap();
+
+        let cli = Cli {
+            confirm: true,
+            scope: Some("./logs".to_string()),
+            peek: vec![sample_path.to_string_lossy().to_string()],
+            arg1: Some("say hi".to_string()),
+            ..Default::default()
+        };
+        let generator = StubGenerator::new("echo hello", "explanation");
+        let executor = RecordingExecutor::with_status(23);
+        let mut reader = Cursor::new(b"y\n".to_vec());
+        let mut output = Vec::new();
+        let summary = run_with_reader_and_confirmation_output(
+            cli.clone(),
+            &generator,
+            &executor,
+            &mut reader,
+            &mut output,
+        )
+        .unwrap();
+
+        assert!(executor.ran());
+        assert_eq!(summary.exit_code, 23);
+        assert_eq!(summary.generated_command.as_deref(), Some("echo hello"));
+        assert!(summary.confirm);
+        assert!(!summary.explain);
+
+        let entry = history_entry_for_run(
+            &cli,
+            vec!["sai".to_string(), "--confirm".to_string()],
+            Path::new("/work"),
+            summary.exit_code,
+            Some(&summary),
+            summary.notes.clone(),
+        );
+        history::write_entry(entry.clone()).unwrap();
+        let stored = history::read_latest_entry().unwrap().unwrap();
+        assert_eq!(stored, entry);
+        assert_eq!(stored.exit_code, 23);
+        assert_eq!(stored.generated_command.as_deref(), Some("echo hello"));
+        assert_eq!(stored.scope.as_deref(), Some("./logs"));
+        assert_eq!(stored.peek_files, vec![sample_path.to_string_lossy().to_string()]);
+    }
+
+    #[test]
+    fn rendering_a_card_is_deterministic_and_has_no_execution_dependencies() {
+        let model_calls = Cell::new(0);
+        let execution_calls = Cell::new(0);
+        let explain_source = ExplainSource::None;
+        let card = PreflightCard {
+            prompt: "say hi",
+            command: "echo hello",
+            primary_tool: "echo",
+            scope_hint: None,
+            safety_mode: SafetyMode::Default,
+            explain_source: &explain_source,
+            risk_markers: &[],
+            config_provenance: PromptConfigProvenance::GlobalDefault(Path::new("config.yaml")),
+        };
+
+        assert_eq!(card.render(), card.render());
+        assert_eq!(model_calls.get(), 0);
+        assert_eq!(execution_calls.get(), 0);
+    }
+
+    #[test]
+    fn preflight_cards_are_legible_in_each_confirmation_mode() {
+        let cases = [
+            (
+                "--confirm",
+                Cli {
+                    confirm: true,
+                    arg1: Some("say hi".to_string()),
+                    ..Default::default()
+                },
+                "echo hello",
+            ),
+            (
+                "--explain",
+                Cli {
+                    explain: true,
+                    arg1: Some("say hi".to_string()),
+                    ..Default::default()
+                },
+                "echo hello",
+            ),
+            (
+                "--unsafe",
+                Cli {
+                    unsafe_mode: true,
+                    arg1: Some("pipe greetings".to_string()),
+                    ..Default::default()
+                },
+                "echo hello | echo goodbye",
+            ),
+            (
+                "--unrestricted",
+                Cli {
+                    unrestricted: true,
+                    arg1: Some("search freely".to_string()),
+                    ..Default::default()
+                },
+                "ripgrep hello",
+            ),
+        ];
+
+        for (mode, cli, command) in cases {
+            let (_, _, output) = run_with_output(cli, b"n\n", command);
+            assert!(output.starts_with("Preflight:\n"), "{mode}:\n{output}");
+            assert!(output.contains(command), "{mode} truncated its command:\n{output}");
+            assert!(!output.contains('\u{1b}'), "{mode} emitted terminal-only styling");
+            assert!(
+                output.lines().count() <= 11,
+                "{mode} card is not compact:\n{output}"
+            );
+            println!("{mode}\n{output}\n");
+        }
     }
 
     #[test]

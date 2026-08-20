@@ -8,6 +8,12 @@ Safety in sai-cli has four layers:
    the 'force_explain' configuration field, providing an additional safety layer
    for destructive or complex operations.
 
+Every confirmation is preceded by a compact preflight card. It reports the
+submitted prompt, full generated command, validated primary tool, effective
+safety mode, locally computed risk markers, and prompt-config source. Scope and
+the reason for an explanation appear when applicable. A clean command reports
+"none found" under Risk so you can tell the local check ran.
+
 Commands are executed directly (no implicit `/bin/sh -c`). `--explain` and
 `--analyze` are read-only operations that never run shell commands. Use
 `--unsafe` sparingly when you intentionally need operators.
@@ -21,8 +27,10 @@ Configure tools to automatically trigger --explain behavior:
       config: ...
 
 When a command uses this tool, you'll get an explanation and confirmation
-even without specifying --explain. This defense-in-depth approach protects
-against accidental data loss while maintaining explicit user control.
+even without specifying --explain. The card's Explain field names the tool and
+its force_explain setting as the effective reason. This defense-in-depth
+approach protects against accidental data loss while maintaining explicit user
+control.
 
 If a generated command surprises you, re-run with `--explain` to see a summary,
 or `--analyze` to review the last invocation from history before trying again.

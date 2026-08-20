@@ -193,7 +193,7 @@ pub const CLI_AFTER_HELP: &str = r#"Prompt input:
 Common flags:
   -s, --scope <SCOPE>     Provide a path or hint to restrict context
   -p, --peek <FILE>...    Send sample file(s) for schema inference
-  -c, --confirm           Ask before executing the generated command
+  -c, --confirm           Review a preflight card before execution
   -u, --unsafe            Allow pipes and redirects (always implies confirm)
       --unrestricted      Lift the tool whitelist; forces explain + typed "yes"
   -e, --explain           Explain the generated command, then ask to confirm

@@ -25,11 +25,14 @@ It is written by the same model that produced the command, so a destructive
 command can receive a calm, plausible explanation. Forced explain buys you
 legibility, not verification.
 
-For that reason the confirmation also shows risk markers computed locally from
-the command text - shell operators, recursive or forced deletion, and wildcards
-reaching outside the working directory. No model is involved in producing them,
-which is what makes them worth reading. They are advisory: they inform your
-decision rather than blocking anything.
+For that reason the preflight card shows risk markers computed locally from the
+command text - shell operators, recursive or forced deletion, and wildcards
+reaching outside the working directory. The same card identifies the effective
+mode and attributes the explanation to mandatory unrestricted inspection. No
+model is involved in producing the markers, which is what makes them worth
+reading. They are advisory: they inform your decision rather than blocking
+anything. The separate no-whitelist announcement and typed `yes` prompt still
+follow the card.
 
 Disabling the mode:
 Set the following in the global config to forbid it outright. sai then refuses

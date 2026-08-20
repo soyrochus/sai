@@ -6,6 +6,11 @@ Sai-cli 1.2.0 makes composing a prompt an editable step rather than a one-shot
 shell argument, and remembers the prompts you have already written.
 
 Highlights:
+- Confirmation output now uses a compact preflight card showing the submitted
+  prompt, full command, validated primary tool, effective safety mode, optional
+  scope and explanation source, locally computed risk markers, and prompt-config
+  provenance. Risk markers now appear before every confirmation instead of only
+  under `--unrestricted`.
 - `--unrestricted` lifts the tool whitelist and operator blocking for a single
   call, in generation as well as validation, and forces inspection in exchange:
   the command is always explained, always confirmed, and the confirmation
@@ -28,6 +33,10 @@ Highlights:
   directory, rotating at 256 KB and created owner-readable only on Unix.
 
 Compatibility:
+- **Confirmation output shape changed**: the former multi-section confirmation
+  header and unrestricted-only risk block are replaced by the aligned preflight
+  card. This remains stderr-only; execution behavior, exit codes, and history
+  records are unchanged.
 - Single-line composition is unaffected by the new line-relative key semantics.
 - Passing a prompt as an argument is unchanged: it runs directly, never through
   the editor. Piped and redirected input never opens the editor either.

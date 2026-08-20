@@ -9,5 +9,19 @@ Generated command:
 Explanation:
   Searches for Python files under the current directory.
 
+Preflight:
+  Prompt:  find Python files
+  Command: find . -name '*.py'
+  Tool:    find
+  Safety:  default
+  Explain: --explain flag
+  Risk:    none found
+  Config:  global default (~/.config/sai/config.yaml)
+Execute this command? [y/N]
+
+The explanation appears first. The preflight card is then the final summary
+before the confirmation prompt. If a tool's force_explain setting caused the
+explanation, the Explain field names that tool instead of the flag.
+
 Use explain mode when learning a new toolset, when using --unsafe, or whenever
 you want to sanity-check the intent before running anything.

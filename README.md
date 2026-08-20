@@ -346,11 +346,16 @@ is always explained, always confirmed, and the confirmation requires typing `yes
 in full. A bare `y` clears every other prompt in sai and deliberately does not
 clear this one.
 
-```
-Risk markers (computed locally, not by the model):
-  [shell operators] contains |
-  [destructive] rm — recursive and forced deletion
-
+```text
+Preflight:
+  Prompt:  remove generated files and record their names
+  Command: rm -rf target | tee removed.log
+  Tool:    rm
+  Safety:  unrestricted
+  Explain: unrestricted mode (mandatory inspection)
+  Risk:    [shell operators] contains |
+           [destructive] rm — recursive and forced deletion
+  Config:  global default (~/.config/sai/config.yaml)
 UNRESTRICTED: no tool whitelist is in effect for this command.
 Type 'yes' to execute:
 ```
@@ -380,14 +385,23 @@ can tell them apart.
 sai -c "Show me all user ids"
 ```
 
-Confirmation shows:
+Confirmation now shows a compact preflight card immediately before the choice:
 
-- global config path
-- prompt config path
-- natural language prompt
-- scope hint (if provided)
-- generated command
-- Y/N choice
+```text
+Preflight:
+  Prompt:  Show me all user ids
+  Command: jq -r '.[].id' users.json
+  Tool:    jq
+  Safety:  default
+  Risk:    none found
+  Config:  global default (~/.config/sai/config.yaml)
+Execute this command? [y/N]
+```
+
+The card always includes the full command, validated primary tool, effective
+safety mode, locally computed risk markers, and prompt-config source. It adds
+Scope and Explain rows only when they apply. Risk markers appear on every
+confirmation, including ordinary `--confirm` and `--unsafe` runs.
 
 ### **Explain mode**
 
@@ -418,6 +432,14 @@ Explanation:
   - -name '*.py' : Match files ending in .py
   - -mtime 0 : Modified less than 24 hours ago
 
+Preflight:
+  Prompt:  Find all Python files modified today
+  Command: find . -name '*.py' -mtime 0
+  Tool:    find
+  Safety:  default
+  Explain: --explain flag
+  Risk:    none found
+  Config:  global default (~/.config/sai/config.yaml)
 Execute this command? [y/N]
 ```
 
