@@ -141,6 +141,23 @@ struct ResponsesReasoningConfig {
     effort: String,
 }
 
+struct OpenAiRequestConfig<'a> {
+    api_key: &'a str,
+    base_url: &'a str,
+    model: &'a str,
+    model_snapshot: Option<&'a str>,
+    system_prompt: &'a str,
+    reasoning_effort: Option<&'a str>,
+}
+
+struct AzureRequestConfig<'a> {
+    api_key: &'a str,
+    endpoint: &'a str,
+    deployment: &'a str,
+    api_version: &'a str,
+    system_prompt: &'a str,
+}
+
 #[derive(Deserialize)]
 struct ChatResponse {
     choices: Vec<Choice>,
@@ -198,23 +215,27 @@ impl HttpCommandGenerator {
                 reasoning_effort,
             } => match api_mode {
                 OpenAiApiMode::Responses => self.call_openai_responses(
-                    api_key,
-                    base_url,
-                    model,
-                    model_snapshot.as_deref(),
-                    system_prompt,
+                    OpenAiRequestConfig {
+                        api_key,
+                        base_url,
+                        model,
+                        model_snapshot: model_snapshot.as_deref(),
+                        system_prompt,
+                        reasoning_effort: reasoning_effort.as_deref(),
+                    },
                     &messages,
-                    reasoning_effort.as_deref(),
                 ),
                 OpenAiApiMode::ChatCompletions => self.call_openai_chat_completions(
-                    api_key,
-                    base_url,
-                    model,
-                    model_snapshot.as_deref(),
-                    system_prompt,
+                    OpenAiRequestConfig {
+                        api_key,
+                        base_url,
+                        model,
+                        model_snapshot: model_snapshot.as_deref(),
+                        system_prompt,
+                        reasoning_effort: reasoning_effort.as_deref(),
+                    },
                     messages,
                     temperature,
-                    reasoning_effort.clone(),
                 ),
             },
             EffectiveAiConfig::Azure {
@@ -223,11 +244,13 @@ impl HttpCommandGenerator {
                 deployment,
                 api_version,
             } => self.call_azure_chat_completions(
-                api_key,
-                endpoint,
-                deployment,
-                api_version,
-                system_prompt,
+                AzureRequestConfig {
+                    api_key,
+                    endpoint,
+                    deployment,
+                    api_version,
+                    system_prompt,
+                },
                 messages,
                 temperature,
             ),
@@ -236,33 +259,30 @@ impl HttpCommandGenerator {
 
     fn call_openai_responses(
         &self,
-        api_key: &str,
-        base_url: &str,
-        model: &str,
-        model_snapshot: Option<&str>,
-        system_prompt: &str,
+        config: OpenAiRequestConfig<'_>,
         messages: &[TextMessage],
-        reasoning_effort: Option<&str>,
     ) -> Result<String> {
         let mut input = Vec::with_capacity(messages.len() + 1);
         input.push(TextMessage {
             role: "developer".to_string(),
-            content: system_prompt.to_string(),
+            content: config.system_prompt.to_string(),
         });
         input.extend_from_slice(messages);
 
         let req = ResponsesApiRequest {
-            model: request_model_name(model, model_snapshot).to_string(),
+            model: request_model_name(config.model, config.model_snapshot).to_string(),
             input,
-            reasoning: reasoning_effort.map(|effort| ResponsesReasoningConfig {
-                effort: effort.to_string(),
-            }),
+            reasoning: config
+                .reasoning_effort
+                .map(|effort| ResponsesReasoningConfig {
+                    effort: effort.to_string(),
+                }),
         };
-        let url = format!("{}/responses", base_url.trim_end_matches('/'));
+        let url = format!("{}/responses", config.base_url.trim_end_matches('/'));
         let resp = self
             .client
             .post(&url)
-            .bearer_auth(api_key)
+            .bearer_auth(config.api_key)
             .json(&req)
             .send()
             .context("HTTP error calling OpenAI Responses API")?;
@@ -274,33 +294,28 @@ impl HttpCommandGenerator {
 
     fn call_openai_chat_completions(
         &self,
-        api_key: &str,
-        base_url: &str,
-        model: &str,
-        model_snapshot: Option<&str>,
-        system_prompt: &str,
+        config: OpenAiRequestConfig<'_>,
         messages: Vec<TextMessage>,
         temperature: f32,
-        reasoning_effort: Option<String>,
     ) -> Result<String> {
         let mut all_messages = Vec::with_capacity(messages.len() + 1);
         all_messages.push(TextMessage {
             role: "developer".to_string(),
-            content: system_prompt.to_string(),
+            content: config.system_prompt.to_string(),
         });
         all_messages.extend(messages);
 
         let req = ChatRequest {
-            model: Some(request_model_name(model, model_snapshot).to_string()),
+            model: Some(request_model_name(config.model, config.model_snapshot).to_string()),
             messages: all_messages,
             temperature: Some(temperature),
-            reasoning_effort,
+            reasoning_effort: config.reasoning_effort.map(str::to_string),
         };
-        let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+        let url = format!("{}/chat/completions", config.base_url.trim_end_matches('/'));
         let resp = self
             .client
             .post(&url)
-            .bearer_auth(api_key)
+            .bearer_auth(config.api_key)
             .json(&req)
             .send()
             .context("HTTP error calling OpenAI Chat Completions")?;
@@ -315,18 +330,14 @@ impl HttpCommandGenerator {
 
     fn call_azure_chat_completions(
         &self,
-        api_key: &str,
-        endpoint: &str,
-        deployment: &str,
-        api_version: &str,
-        system_prompt: &str,
+        config: AzureRequestConfig<'_>,
         messages: Vec<TextMessage>,
         temperature: f32,
     ) -> Result<String> {
         let mut all_messages = Vec::with_capacity(messages.len() + 1);
         all_messages.push(TextMessage {
             role: "system".to_string(),
-            content: system_prompt.to_string(),
+            content: config.system_prompt.to_string(),
         });
         all_messages.extend(messages);
 
@@ -338,14 +349,14 @@ impl HttpCommandGenerator {
         };
         let url = format!(
             "{}/openai/deployments/{}/chat/completions?api-version={}",
-            endpoint.trim_end_matches('/'),
-            deployment,
-            api_version
+            config.endpoint.trim_end_matches('/'),
+            config.deployment,
+            config.api_version
         );
         let resp = self
             .client
             .post(&url)
-            .header("api-key", api_key)
+            .header("api-key", config.api_key)
             .json(&req)
             .send()
             .context("HTTP error calling Azure OpenAI")?;

@@ -19,7 +19,7 @@ It is designed for Unix-like environments like Linux and MacOS but builds cleanl
 
 Current release and toolchain:
 
-- Version: 1.1.0
+- Version: 1.2.0
 - Rust edition: 2024
 
 ![sai-logo](images/sai-logo-smallest.png)

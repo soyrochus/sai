@@ -105,10 +105,10 @@ pub fn detect_forbidden_operator(cmd_line: &str) -> Option<String> {
                 return Some("|".to_string());
             }
             '&' => {
-                if let Some(&next) = chars.peek() {
-                    if next == '&' {
-                        return Some("&&".to_string());
-                    }
+                if let Some(&next) = chars.peek()
+                    && next == '&'
+                {
+                    return Some("&&".to_string());
                 }
                 return Some("&".to_string());
             }

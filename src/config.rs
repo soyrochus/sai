@@ -174,7 +174,7 @@ pub fn set_config_dir_override_for_tests<P: Into<PathBuf>>(dir: P) -> ConfigDirO
     let dir = dir.into();
     let prev = CONFIG_ROOT_OVERRIDE.with(|cell| {
         let mut guard = cell.borrow_mut();
-        std::mem::replace(&mut *guard, Some(dir))
+        guard.replace(dir)
     });
     ConfigDirOverrideGuard { prev }
 }
@@ -290,10 +290,10 @@ pub fn resolve_ai_config(global_ai: Option<AiConfig>) -> Result<EffectiveAiConfi
 }
 
 fn env_or(file_value: Option<String>, env_key: &str) -> Option<String> {
-    if let Ok(v) = env::var(env_key) {
-        if !v.is_empty() {
-            return Some(v);
-        }
+    if let Ok(v) = env::var(env_key)
+        && !v.is_empty()
+    {
+        return Some(v);
     }
     file_value
 }

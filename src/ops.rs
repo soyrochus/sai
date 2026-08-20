@@ -89,11 +89,11 @@ pub fn resolve_duplicate_tools(
                         let mut merged_tool = tool.clone();
 
                         // Preserve force_explain from existing if incoming doesn't specify it
-                        if merged_tool.force_explain.is_none() {
-                            if let Some(existing_value) = merged[pos].force_explain {
-                                merged_tool.force_explain = Some(existing_value);
-                                io.write_str("  (preserving force_explain from global config)\n")?;
-                            }
+                        if merged_tool.force_explain.is_none()
+                            && let Some(existing_value) = merged[pos].force_explain
+                        {
+                            merged_tool.force_explain = Some(existing_value);
+                            io.write_str("  (preserving force_explain from global config)\n")?;
                         }
 
                         merged[pos] = merged_tool;
@@ -381,7 +381,7 @@ mod tests {
     fn create_prompt_template_writes_file() {
         let dir = tempdir().unwrap();
         let template_path = dir.path().join("cmd.yaml");
-        create_prompt_template(&vec![
+        create_prompt_template(&[
             "cmd".to_string(),
             template_path.to_string_lossy().to_string(),
         ])
