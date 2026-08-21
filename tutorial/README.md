@@ -30,6 +30,7 @@ tutorial/
   src/
     SUMMARY.md      table of contents mdBook reads
     README.md       book front page
+    assistant-setup.md  concrete setup for Claude Code, GitHub Copilot, Codex
     chapters/       the 14 chapters
     checkpoints.md, prompts/, exercises/, troubleshooting.md,
     divergences.md, proposal.md

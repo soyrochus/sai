@@ -21,7 +21,7 @@ rustc --version
 cargo --version
 ```
 
-You also need Git, a terminal, and an AI coding assistant that can inspect and edit a local repository. A model API key is not needed until Chapter 4. Never commit an API key.
+You also need Git, a terminal, and an AI coding assistant that can inspect and edit a local repository. If you don't already have one set up, see [Connect an AI coding assistant](assistant-setup.md) for concrete steps with three widely used options. A model API key is not needed until Chapter 4. Never commit an API key.
 
 Create the course project beside this repository:
 
@@ -85,6 +85,7 @@ cargo clippy --all-targets -- -D warnings
 
 ## Supporting material
 
+- [Connect an AI coding assistant](assistant-setup.md) — concrete setup for three widely used options.
 - [Checkpoint matrix](checkpoints.md) — acceptance commands and expected evidence.
 - [Reusable AI prompts](prompts/README.md) — planning, implementation, debugging, and review prompts.
 - [Exercises and capstone](exercises/README.md) — design work that is intentionally not solved for you.

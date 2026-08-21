@@ -1,6 +1,7 @@
 # Summary
 
 [Rust in the Loop](README.md)
+[Connect an AI coding assistant](assistant-setup.md)
 
 # Part I — Learn Rust by building a CLI
 
