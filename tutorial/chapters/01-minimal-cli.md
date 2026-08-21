@@ -157,5 +157,13 @@ Add an optional `--scope <PATH>` and display it only when present. Use `Option<S
 
 AI can recall Clap syntax quickly. Rust determines whether ownership is coherent. You decide the product contract and whether the suggested design is proportionate.
 
+## Further learning
+
+- [The Rust Book — What is Ownership?](https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html) — the canonical explanation behind today's borrow-vs-own question.
+- [The Rust Book — References and Borrowing](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html) — the rule `render_request(&cli.request)` is applying.
+- [Brown's interactive Book — References and Borrowing](https://rust-book.cs.brown.edu/ch04-02-references-and-borrowing.html) — same chapter, with the ownership visualizations and quizzes the official Book now points readers to.
+- [Comprehensive Rust — Ownership](https://google.github.io/comprehensive-rust/memory-management/ownership.html) — a faster pass if move-vs-copy semantics are already familiar from another language.
+- [Rustlings — `06_move_semantics`](https://github.com/rust-lang/rustlings/tree/main/exercises/06_move_semantics) — do this alongside the chapter, not after it.
+
 Next: [Types for a growing application](02-application-types.md).
 

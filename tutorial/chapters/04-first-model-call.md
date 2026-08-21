@@ -214,3 +214,13 @@ Define a small request and response struct with `serde::{Serialize, Deserialize}
 - Why is generated text still data even when it looks like a shell command?
 - Which failures belong to HTTP, JSON decoding, and application validation?
 - Where did ownership force you to make the lifetime of returned data explicit?
+
+## Further learning
+
+- [The Rust Book — Processing a Series of Items with Iterators](https://doc.rust-lang.org/book/ch13-02-iterators.html) — the theory behind the `filter_map`/`find_map` chain in `extract_output_text`.
+- [Comprehensive Rust — Iterator Helper Methods](https://google.github.io/comprehensive-rust/iterators/helpers.html)
+- [Comprehensive Rust — `Option`](https://google.github.io/comprehensive-rust/std-types/option.html)
+- [Rust by Example — Combinators: `map`](https://doc.rust-lang.org/rust-by-example/error/option_unwrap/map.html) — the same `.map().filter().map()` shape this chapter's parser uses.
+- [Rustlings — `18_iterators`](https://github.com/rust-lang/rustlings/tree/main/exercises/18_iterators)
+
+Next: [Configuration instead of hard-coded behavior](05-configuration.md).

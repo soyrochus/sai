@@ -157,4 +157,12 @@ Create a `Prompt` newtype with a fallible constructor. Compare enforcing nonblan
 
 AI often writes only the happy path unless asked for failure cases. Rust's `Result` forces the application to represent failure, but humans still decide which failures matter and how much context users need.
 
+## Further learning
+
+- [The Rust Book — Error Handling](https://doc.rust-lang.org/book/ch09-00-error-handling.html) — panic vs. `Result`, the decision this chapter makes concrete.
+- [The Rust Book — Recoverable Errors with `Result`](https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html)
+- [Comprehensive Rust — `anyhow`](https://google.github.io/comprehensive-rust/error-handling/anyhow.html) — the exact crate this chapter adds, explained on its own.
+- [Rust by Example — `Result`](https://doc.rust-lang.org/rust-by-example/error/result.html) — a quick reference once the pattern feels routine.
+- [Rustlings — `13_error_handling`](https://github.com/rust-lang/rustlings/tree/main/exercises/13_error_handling)
+
 Next: [The first model call](04-first-model-call.md).

@@ -229,3 +229,14 @@ Use `proptest` to generate arbitrary strings and assert that analysis never pani
 - When are byte offsets preferable to character positions?
 - What did the Unicode test reveal about the relationship between `String`, bytes, and indexing?
 - Why does `RiskMarker` need an explicit `<'a>` when `analyze`'s own parameter and return type do not strictly need one written out?
+
+## Further learning
+
+- [The Rust Book — Validating References with Lifetimes](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html) — the canonical explanation of what this chapter's `<'a>` is doing.
+- [Brown's interactive Book — Ownership Inventory #3](https://rust-book.cs.brown.edu/ch10-04-inventory.html) — a quiz built specifically to drill ownership-and-lifetime scenarios like this chapter's.
+- [Comprehensive Rust — Lifetimes in Data Structures](https://google.github.io/comprehensive-rust/lifetimes/struct-lifetimes.html) — exactly `RiskMarker<'a>`'s situation, worked from scratch.
+- [Comprehensive Rust — Lifetime Elision](https://google.github.io/comprehensive-rust/lifetimes/lifetime-elision.html) — the rules that let `analyze`'s own signature stay unannotated, if you choose to lean on them.
+- [Rust by Example — Lifetimes in structs](https://doc.rust-lang.org/rust-by-example/scope/lifetime/struct.html)
+- [Rustlings — `16_lifetimes`](https://github.com/rust-lang/rustlings/tree/main/exercises/16_lifetimes)
+
+Next: [History and backward-compatible data](11-history.md).

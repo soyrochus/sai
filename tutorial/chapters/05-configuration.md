@@ -254,3 +254,13 @@ Use Serde naming attributes so YAML accepts `openai` and `azure`. Make invalid p
 - Why is a type error during configuration loading better than a string comparison deep in the application?
 - When is cloning a configuration field the clearest solution, and when is borrowing better?
 - Which configuration values are safe to print in diagnostics?
+
+## Further learning
+
+- [Brown's interactive Book — Fixing Ownership Errors](https://rust-book.cs.brown.edu/ch04-03-fixing-ownership-errors.html) — an experimental chapter with no equivalent in the official Book, built for exactly this chapter's partial-move error.
+- [Rust by Example — Partial moves](https://doc.rust-lang.org/rust-by-example/scope/move/partial_move.html)
+- [Comprehensive Rust — `Default`, struct update syntax](https://google.github.io/comprehensive-rust/std-traits/default.html)
+- [Comprehensive Rust — `Option`](https://google.github.io/comprehensive-rust/std-types/option.html)
+- [The Rust Book — Appendix C: Derivable Traits](https://doc.rust-lang.org/book/appendix-03-derivable-traits.html)
+
+Next: [Treat model output as untrusted](06-validation.md).

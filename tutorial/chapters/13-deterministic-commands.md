@@ -215,3 +215,10 @@ Implement listing by scanning and parsing script headers, with no registry file.
 - How does freezing change the model from a runtime dependency into an authoring dependency?
 - Why is exact-text comparison insufficient to prove equivalent execution semantics?
 - Which guarantees end when a user edits the generated script?
+
+## Further learning
+
+- [The Rust Book — Using `Box<T>` to Point to Data on the Heap](https://doc.rust-lang.org/book/ch15-01-box.html) — the smart-pointer family `Cow` belongs to, though `Cow` itself isn't covered in the Book, Comprehensive Rust, or Rust by Example.
+- [Rust by Example — `cfg`](https://doc.rust-lang.org/rust-by-example/attribute/cfg.html) — the attribute behind every `#[cfg(unix)]` in this chapter.
+
+Next: [Specification-driven development with AI](14-spec-driven-development.md).

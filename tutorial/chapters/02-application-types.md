@@ -175,5 +175,13 @@ Add a private `RunSummary::from_request(String)` constructor. Decide whether it 
 
 The AI can propose module layouts; you decide which boundaries are justified now. Rust makes the chosen ownership and visibility enforceable across the crate.
 
+## Further learning
+
+- [The Rust Book — Defining and Instantiating Structs](https://doc.rust-lang.org/book/ch05-01-defining-structs.html)
+- [The Rust Book — Control Scope and Privacy with Modules](https://doc.rust-lang.org/book/ch07-02-defining-modules-to-control-scope-and-privacy.html)
+- [Comprehensive Rust — Visibility](https://google.github.io/comprehensive-rust/modules/visibility.html) — the `pub` question this chapter asks of every field.
+- [Rustlings — `07_structs`](https://github.com/rust-lang/rustlings/tree/main/exercises/07_structs)
+- [Rustlings — `10_modules`](https://github.com/rust-lang/rustlings/tree/main/exercises/10_modules)
+
 Next: [Errors are part of the design](03-errors.md).
 

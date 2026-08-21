@@ -149,3 +149,11 @@ Add explicit glob expansion with the `glob` crate, but only for unquoted argumen
 - Why does direct execution remove an entire class of shell-injection behavior?
 - Which conveniences disappear when there is no shell?
 - Should a child’s nonzero exit code become an application error, or should the CLI propagate it unchanged?
+
+## Further learning
+
+- [The Rust Book — The Slice Type](https://doc.rust-lang.org/book/ch04-03-slices.html) — what `split_first` is actually handing you.
+- [Rust by Example — Child processes](https://doc.rust-lang.org/rust-by-example/std_misc/process.html) — a second worked example of `std::process::Command`.
+- [Rust by Example — Wait](https://doc.rust-lang.org/rust-by-example/std_misc/process/wait.html) — exit-status handling beyond what this chapter needs yet.
+
+Next: [Traits make external systems replaceable](08-traits-and-tests.md).

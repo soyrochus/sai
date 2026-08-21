@@ -183,3 +183,11 @@ Add `schema_version: u32` and deserialize through an untagged compatibility enum
 - Which history fields help debugging without retaining unnecessary private data?
 - What does Serde guarantee, and what compatibility policy must you still design?
 - Why is append-only storage easier to recover than one repeatedly rewritten JSON array?
+
+## Further learning
+
+- [The Rust Book — Reading a File](https://doc.rust-lang.org/book/ch12-02-reading-a-file.html)
+- [Comprehensive Rust — `Read` and `Write`](https://google.github.io/comprehensive-rust/std-traits/read-and-write.html)
+- [Rust by Example — File I/O](https://doc.rust-lang.org/rust-by-example/std_misc/file.html)
+
+Next: [An interactive terminal editor](12-terminal-editor.md).

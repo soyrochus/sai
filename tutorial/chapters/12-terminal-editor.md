@@ -227,3 +227,12 @@ Add reverse incremental search as a nested state containing the query, current m
 - Which parts became simple once terminal I/O was removed from the state machine?
 - What is the difference between byte, Unicode scalar, grapheme, and display-column positions?
 - How does `Drop` make cleanup more reliable than repeating it at every return site?
+
+## Further learning
+
+- [The Rust Book — Running Code on Cleanup with the `Drop` Trait](https://doc.rust-lang.org/book/ch15-03-drop.html) — the guarantee behind `RawModeGuard`.
+- [The Rust Book — Storing UTF-8 Encoded Text with Strings](https://doc.rust-lang.org/book/ch08-02-strings.html) — why `byte_offset` needed its own helper.
+- [Comprehensive Rust — `Drop`](https://google.github.io/comprehensive-rust/memory-management/drop.html)
+- [Rust by Example — RAII](https://doc.rust-lang.org/rust-by-example/scope/raii.html)
+
+Next: [Deterministic commands](13-deterministic-commands.md).

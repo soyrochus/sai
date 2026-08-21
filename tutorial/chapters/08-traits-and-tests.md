@@ -192,3 +192,14 @@ Replace the generic parameters with `&dyn CommandGenerator` and `&dyn CommandExe
 - Which behavior belongs in orchestration rather than in the generator or executor?
 - Why can a trait improve testing even when there is only one production implementation?
 - What risks does `RefCell` move from compile time to runtime?
+
+## Further learning
+
+- [The Rust Book — Defining Shared Behavior with Traits](https://doc.rust-lang.org/book/ch10-02-traits.html)
+- [The Rust Book — Using Trait Objects to Abstract over Shared Behavior](https://doc.rust-lang.org/book/ch18-02-trait-objects.html) — the `dyn` comparison this chapter's stretch exercise asks for.
+- [The Rust Book — `RefCell<T>` and the Interior Mutability Pattern](https://doc.rust-lang.org/book/ch15-05-interior-mutability.html)
+- [Comprehensive Rust — `dyn Trait`](https://google.github.io/comprehensive-rust/generics/dyn-trait.html)
+- [Comprehensive Rust — Trait Bounds](https://google.github.io/comprehensive-rust/generics/trait-bounds.html)
+- [Rustlings — `15_traits`](https://github.com/rust-lang/rustlings/tree/main/exercises/15_traits)
+
+Next: [Safety modes as explicit states](09-safety-modes.md).

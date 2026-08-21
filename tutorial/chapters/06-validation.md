@@ -179,3 +179,14 @@ Make `ValidatedCommand` fields private. Add `program()` and `args()` accessors, 
 - What can types guarantee here, and what still requires runtime checks?
 - Which false positives are acceptable for a safety-first default?
 - Why is a deterministic validator preferable to asking the model whether its own output is safe?
+
+## Further learning
+
+- [The Rust Book — Enums and Pattern Matching](https://doc.rust-lang.org/book/ch06-00-enums.html)
+- [The Rust Book — The `match` Control Flow Construct](https://doc.rust-lang.org/book/ch06-02-match.html)
+- [Comprehensive Rust — Destructuring Enums](https://google.github.io/comprehensive-rust/pattern-matching/destructuring-enums.html)
+- [Rust by Example — `HashSet`](https://doc.rust-lang.org/rust-by-example/std/hash/hashset.html)
+- [Rust by Example — New Type Idiom](https://doc.rust-lang.org/rust-by-example/generics/new_types.html) — the pattern behind the stretch exercise's private-fields `ValidatedCommand`.
+- [Rustlings — `08_enums`](https://github.com/rust-lang/rustlings/tree/main/exercises/08_enums)
+
+Next: [Execute the safe path](07-execution.md).

@@ -165,3 +165,13 @@ Add a `--dry-run` flag orthogonal to safety mode. Decide whether the combination
 - How did the enum eliminate invalid combinations?
 - Why should “unsafe” and “unrestricted” remain different concepts?
 - What must a confirmation protect against, and what can it never guarantee?
+
+## Further learning
+
+- [The Rust Book — Defining an Enum](https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html)
+- [Comprehensive Rust — Enums](https://google.github.io/comprehensive-rust/user-defined-types/enums.html)
+- [Comprehensive Rust — Copy Types](https://google.github.io/comprehensive-rust/memory-management/copy-types.html) — why deriving `Copy` here is a real decision, not decoration.
+- [Rust by Example — C-like enums](https://doc.rust-lang.org/rust-by-example/custom_types/enum/c_like.html)
+- [Rustlings — `08_enums`](https://github.com/rust-lang/rustlings/tree/main/exercises/08_enums)
+
+Next: [Local risk analysis](10-risk-analysis.md).

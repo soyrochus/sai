@@ -184,3 +184,11 @@ Give a fresh AI session only the archived change and repository—not the origin
 - Where did compiler feedback improve the design rather than merely delay implementation?
 - What evidence allowed you to mark a task complete?
 - Can another developer continue the project without access to your AI conversation?
+
+## Further learning
+
+- [The Rust Book — Appendix D: Useful Development Tools](https://doc.rust-lang.org/book/appendix-04-useful-development-tools.html) — rustfmt, Clippy, and rust-analyzer, the tools behind this chapter's quality gate.
+- [Brown's interactive Book — Fixing Ownership Errors](https://rust-book.cs.brown.edu/ch04-03-fixing-ownership-errors.html) — the same partial-move scenario this chapter's compiler conversation reuses.
+- [Comprehensive Rust — Compiler Lints and Clippy](https://google.github.io/comprehensive-rust/testing/lints.html)
+
+This is the last chapter. Next: the [capstone](../exercises/README.md#capstone), where you specify and implement a feature of your own choosing using the complete workflow.
