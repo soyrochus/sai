@@ -66,7 +66,7 @@ By completing the tutorial, learners will be able to:
 ### Rust
 
 - Create and organize a Cargo project.
-- Work confidently with ownership, borrowing, references, and cloning.
+- Work confidently with ownership, borrowing, references, cloning, and named lifetimes on structs that hold borrowed data.
 - Model application state with structs, enums, `Option`, and `Result`.
 - Use pattern matching, iterators, slices, generics, and traits.
 - Parse and serialize JSON and YAML with Serde.
@@ -226,7 +226,7 @@ Checkpoint: each safety mode has defined, tested behavior.
 
 Detect operators, destructive flags, and broad wildcards using deterministic Rust code.
 
-Rust focus: scanners, state transitions, character iteration, borrowed input, and table-driven tests.
+Rust focus: scanners, state transitions, character iteration, named lifetimes on borrowed-data structs, and table-driven tests.
 
 AI collaboration focus: use AI to generate adversarial cases, then verify each case independently.
 

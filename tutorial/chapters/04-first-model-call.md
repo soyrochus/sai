@@ -104,10 +104,12 @@ let command = llm::generate_command(
     "https://api.openai.com/v1/responses",
     &api_key,
     "YOUR_MODEL",
-    &cli.request.join(" "),
+    &cli.request,
 )?;
 println!("{command}");
 ```
+
+This snippet prints the command directly instead of returning it through `RunSummary`. Treat `RunSummary` as scaffolding for Chapters 2–3: from here on, orchestration will grow into its own module and eventually return a plain `Result<i32>` once traits are introduced in Chapter 8. That change is deliberate, not an oversight.
 
 Choose a model available to your account. The finished SAI implementation supports multiple provider shapes; examine [`src/llm.rs`](../../src/llm.rs) when you are ready to generalize this first client.
 

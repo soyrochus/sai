@@ -78,6 +78,8 @@ where
 
 `main` now assembles concrete dependencies; `run` describes policy and workflow. This is dependency injection using ordinary Rust types, not a framework.
 
+Note that `run` returns `Result<i32>`, not the `RunSummary` from Chapter 2. `RunSummary` served its purpose while the application had one linear path to observe; now that generation, validation, and execution are independently testable behind traits, the exit code is the only outcome orchestration itself needs to report. If your own project still wants a richer summary — for history or diagnostics — build it explicitly from this point rather than reviving the old struct.
+
 The finished project uses the same idea in [`src/app.rs`](../../src/app.rs).
 
 ## AI collaboration script

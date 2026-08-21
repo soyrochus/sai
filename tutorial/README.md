@@ -89,6 +89,7 @@ cargo clippy --all-targets -- -D warnings
 - [Reusable AI prompts](prompts/README.md) — planning, implementation, debugging, and review prompts.
 - [Exercises and capstone](exercises/README.md) — design work that is intentionally not solved for you.
 - [Troubleshooting](troubleshooting.md) — compiler, test, API, shell, and terminal symptoms.
+- [Divergences from the reference application](divergences.md) — chapter-by-chapter, where `src/` differs from what you build and why.
 - [Course proposal](proposal.md) — goals, scope, and teaching philosophy.
 
 ## The rule that matters most

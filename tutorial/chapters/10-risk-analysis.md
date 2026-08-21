@@ -8,7 +8,7 @@ Scan command text and return stable, structured risk markers with byte positions
 
 ## Rust concepts
 
-This chapter applies enums, a single-pass state machine, byte-prefix comparison, UTF-8 boundaries, ordered structured results, and adversarial table tests.
+This chapter applies enums, a single-pass state machine, byte-prefix comparison, UTF-8 boundaries, named lifetimes, ordered structured results, and adversarial table tests.
 
 ## Build
 
@@ -24,17 +24,19 @@ pub enum RiskKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RiskMarker {
+pub struct RiskMarker<'a> {
     pub kind: RiskKind,
     pub byte_offset: usize,
-    pub token: &'static str,
+    pub token: &'a str,
 }
 ```
+
+`token` borrows directly from the text it was found in, so `RiskMarker` must say how long that borrow is allowed to last. A struct that stores a reference always names a lifetime parameter — nothing elides it away. Try writing the field as plain `&str` first and let the compiler explain what's missing before adding `<'a>`.
 
 Build a single-pass scanner that tracks quote state:
 
 ```rust
-pub fn analyze(source: &str) -> Vec<RiskMarker> {
+pub fn analyze<'a>(source: &'a str) -> Vec<RiskMarker<'a>> {
     let bytes = source.as_bytes();
     let mut markers = Vec::new();
     let mut quote: Option<u8> = None;
@@ -66,27 +68,28 @@ pub fn analyze(source: &str) -> Vec<RiskMarker> {
                 .is_none_or(|byte| byte.is_ascii_whitespace())
         };
         let found = if token_start && tail.starts_with(b"--force") && boundary_after(7) {
-            Some((RiskKind::DestructiveFlag, "--force", 7))
+            Some((RiskKind::DestructiveFlag, 7))
         } else if token_start && tail.starts_with(b"-rf") && boundary_after(3) {
-            Some((RiskKind::DestructiveFlag, "-rf", 3))
+            Some((RiskKind::DestructiveFlag, 3))
         } else if tail.starts_with(b"$(") {
-            Some((RiskKind::CommandSubstitution, "$(", 2))
+            Some((RiskKind::CommandSubstitution, 2))
         } else if tail.starts_with(b"&&") {
-            Some((RiskKind::Separator, "&&", 2))
+            Some((RiskKind::Separator, 2))
         } else if tail.starts_with(b"||") {
-            Some((RiskKind::Separator, "||", 2))
+            Some((RiskKind::Separator, 2))
         } else {
             match byte {
-                b'|' => Some((RiskKind::Pipeline, "|", 1)),
-                b'>' | b'<' => Some((RiskKind::Redirect, if byte == b'>' { ">" } else { "<" }, 1)),
-                b';' | b'\n' => Some((RiskKind::Separator, if byte == b';' { ";" } else { "newline" }, 1)),
-                b'`' => Some((RiskKind::CommandSubstitution, "`", 1)),
-                b'*' => Some((RiskKind::BroadWildcard, "*", 1)),
+                b'|' => Some((RiskKind::Pipeline, 1)),
+                b'>' | b'<' => Some((RiskKind::Redirect, 1)),
+                b';' | b'\n' => Some((RiskKind::Separator, 1)),
+                b'`' => Some((RiskKind::CommandSubstitution, 1)),
+                b'*' => Some((RiskKind::BroadWildcard, 1)),
                 _ => None,
             }
         };
 
-        if let Some((kind, token, width)) = found {
+        if let Some((kind, width)) = found {
+            let token = &source[index..index + width];
             markers.push(RiskMarker { kind, byte_offset: index, token });
             index += width;
         } else {
@@ -97,11 +100,11 @@ pub fn analyze(source: &str) -> Vec<RiskMarker> {
 }
 ```
 
-This deliberately handles ASCII shell metacharacters plus two conservative risk signals: a broad wildcard and the standalone destructive flags `-rf` and `--force`. It compares byte prefixes without slicing the UTF-8 string. Byte offsets are appropriate because every reported marker begins on an ASCII character boundary, but any UI that moves a cursor through arbitrary text must handle UTF-8 boundaries separately. Markers are warnings, not a claim that every occurrence is harmful.
+This deliberately handles ASCII shell metacharacters plus two conservative risk signals: a broad wildcard and the standalone destructive flags `-rf` and `--force`. The scanner still finds matches by comparing byte prefixes without slicing the UTF-8 string, exactly as before — but once a match is found, `token` is sliced directly from `source` instead of being copied from a hardcoded literal. That slice can never disagree with what was actually matched, and the earlier `"newline"` placeholder is gone: the token for a bare `\n` is now the literal newline character, because that is what was actually found. Byte offsets are appropriate because every reported marker begins on an ASCII character boundary, but any UI that moves a cursor through arbitrary text must handle UTF-8 boundaries separately. Markers are warnings, not a claim that every occurrence is harmful.
 
 Use markers to render a deterministic warning. They inform confirmation; they do not make shell execution safe.
 
-The production analyzer lives in [`src/risk.rs`](../../src/risk.rs).
+The production analyzer lives in [`src/safety.rs`](../../src/safety.rs).
 
 ## AI collaboration script
 
@@ -127,7 +130,31 @@ bytes[index..].starts_with(b"&&")
 
 This is the kind of subtle bug Rust makes visible once you reason precisely about bytes and strings. An alternative design can iterate with `char_indices()` and retain valid boundaries by construction.
 
-`RiskKind` is `Copy`; `RiskMarker` owns no source text and uses static labels. If markers need to quote arbitrary substrings later, store a `Range<usize>` and borrow from the original text at rendering time.
+`RiskKind` is `Copy` and owns nothing, so it needed no lifetime. `RiskMarker` is different: it stores a slice of the text it was built from, so the compiler needs to know how long that borrow is valid. Write the struct without a lifetime parameter first:
+
+```rust,compile_fail
+pub struct RiskMarker {
+    pub kind: RiskKind,
+    pub byte_offset: usize,
+    pub token: &str,
+}
+```
+
+The compiler rejects this with `missing lifetime specifier`. Every other reference you have written so far — a function parameter like `source: &str`, a local variable, a return value borrowed from a single input — has its lifetime worked out automatically by Rust's elision rules. A struct field is the one common place elision does not reach: nothing tells the compiler how long a `RiskMarker` is allowed to outlive the text it points into, so it insists you say so. Adding `<'a>` to both the struct and `token: &'a str` is that answer, not decoration.
+
+`analyze`'s own signature, `fn analyze<'a>(source: &'a str) -> Vec<RiskMarker<'a>>`, is written out in full here because that is the point of this chapter, but it is worth knowing that elision *would* have covered it: with exactly one reference parameter, Rust already assumes every borrowed value in the return type owes its lifetime to that parameter, so `fn analyze(source: &str) -> Vec<RiskMarker<'_>>` compiles identically. Struct definitions never get that shortcut; function signatures sometimes do. Naming `'a` explicitly here makes the invariant readable even where the compiler would have inferred it for you.
+
+The lifetime is not just paperwork — it is enforced. This does not compile:
+
+```rust,compile_fail
+let markers = {
+    let source = String::from("rm -rf build");
+    analyze(&source)
+};
+println!("{}", markers[0].token);
+```
+
+`source` is dropped at the end of the inner block, but `markers` borrows from it and was about to escape that block. The diagnostic will point at `source` and say it does not live long enough. That is exactly the property you want from a risk marker: it is structurally impossible to hold one whose token has outlived the command text it was found in.
 
 ## Tests
 
@@ -161,9 +188,12 @@ fn risk_matrix() {
 fn unicode_before_operator_does_not_panic() {
     let markers = analyze("echo café | head");
     assert_eq!(markers[0].kind, RiskKind::Pipeline);
+    assert_eq!(markers[0].token, "|");
     assert_eq!(&"echo café | head"[markers[0].byte_offset..][..1], "|");
 }
 ```
+
+`markers[0].token` borrows from whatever was passed into `analyze`. Here that is a `'static` string literal, so nothing can drop it early — but if `source` had instead been an owned `String` built in a narrower scope, as in the compiler-conversation example above, reading `token` after that scope ended would fail to compile, not merely fail at runtime.
 
 The Unicode regression protects the byte-prefix design from being replaced by unsafe string slicing later.
 
@@ -177,6 +207,7 @@ Add property tests later if this becomes a security-critical library. A valuable
 - Unicode input cannot cause invalid string slicing.
 - Markers preserve stable source order and byte offsets.
 - Warnings never claim to prove a command safe.
+- `token` is sliced from `source`, not duplicated as a separate literal, so it cannot drift from what was actually matched.
 
 ## Checkpoint
 
@@ -197,3 +228,4 @@ Use `proptest` to generate arbitrary strings and assert that analysis never pani
 - Why is deterministic analysis more trustworthy for enforcement than a second AI opinion?
 - When are byte offsets preferable to character positions?
 - What did the Unicode test reveal about the relationship between `String`, bytes, and indexing?
+- Why does `RiskMarker` need an explicit `<'a>` when `analyze`'s own parameter and return type do not strictly need one written out?
