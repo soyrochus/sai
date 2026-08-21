@@ -12,7 +12,7 @@ include = [
     "templates/**/*",
     "Cargo.toml",
     "README.md",
-    "LICENSE",
+    "LICENSE.md",
 ]
 
 [dependencies]

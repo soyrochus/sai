@@ -98,3 +98,7 @@ AI output is a proposal. Rust code that compiles is a stronger proposal. Tested 
 
 Never skip directly from the first to the third.
 
+## License
+
+This tutorial's text — chapters, prose, exercises, and supporting documentation — is licensed under [CC BY 4.0](LICENSE.md). The SAI application source code it references, under `src/` at the root of this repository, remains separately licensed under the MIT License.
+

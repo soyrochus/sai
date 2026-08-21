@@ -33,6 +33,8 @@ tutorial/
     chapters/       the 14 chapters
     checkpoints.md, prompts/, exercises/, troubleshooting.md,
     divergences.md, proposal.md
+    LICENSE.md      CC BY 4.0 — covers this tutorial's text, not the SAI source code
+                    (lives inside src/ so mdBook copies it into the built book)
   scripts/
     check-course.sh  structural QA gate (headings, required files, mdbook build)
 ```
@@ -44,3 +46,7 @@ tutorial/scripts/check-course.sh
 ```
 
 It checks that every chapter has its required section headings, that every supporting file exists and is non-empty, and — if `mdbook` is installed — that the book actually builds.
+
+## License
+
+This tutorial's text is licensed under [CC BY 4.0](src/LICENSE.md), separately from the MIT-licensed SAI source code under `src/` at the repository root (note: that's the *repository's* `src/`, not this tutorial's own `tutorial/src/`). See the [book's front page](src/README.md#license) for the reader-facing version of this notice.

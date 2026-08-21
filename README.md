@@ -823,6 +823,21 @@ This is particularly useful after errors or unexpected results, as the LLM can e
 The module layout, trait boundaries, safety model and design rationale are
 documented in [docs/TECHSPEC.md](docs/TECHSPEC.md).
 
+## Tutorial: Rust in the Loop
+
+*Learn Rust. Build with AI. Build AI-powered apps.*
+
+This repository doubles as a fourteen-chapter, project-based course. [`tutorial/`](tutorial/) walks a reader who already knows another programming language, but not Rust, through building a smaller version of Sai-cli from an empty Cargo project — using an AI coding assistant as a collaborator throughout, not as an oracle that writes the application for you. Every chapter advances three things together: the Rust language, the practice of directing and reviewing an AI assistant, and the design of an application that itself calls a language model.
+
+It's an [mdBook](https://rust-lang.github.io/mdBook/) project, the same tooling behind *The Rust Programming Language* and *Rust by Example*:
+
+```bash
+cargo install mdbook   # if not already installed
+mdbook serve tutorial --open
+```
+
+Or read it directly on disk, starting at [`tutorial/src/README.md`](tutorial/src/README.md); every file is plain Markdown. The tutorial's text is licensed separately from the application's code — see [License and Copyright](#license-and-copyright).
+
 ## Development
 
 - Format with `cargo fmt`.
@@ -854,4 +869,6 @@ This project follows the [FOSS Pluralism Manifesto](./FOSS_PLURALISM_MANIFESTO.m
 
 Copyright (c) 2025, 2026 Iwan van der Kleijn
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE.md](LICENSE.md) file for details.
+
+The [tutorial](tutorial/) — "Rust in the Loop," under `tutorial/` — is licensed separately, under [CC BY 4.0](tutorial/src/LICENSE.md), since it is written material rather than software.

@@ -36,3 +36,4 @@
 [Troubleshooting](troubleshooting.md)
 [Divergences from the reference application](divergences.md)
 [Course proposal](proposal.md)
+[License](LICENSE.md)
