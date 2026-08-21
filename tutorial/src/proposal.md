@@ -313,32 +313,39 @@ The learner should see that AI can produce plausible code while Rust and a good 
 
 ## Repository and release structure
 
-The tutorial will live under `tutorial/` while the current application remains the reference implementation.
+The tutorial lives under `tutorial/` while the current application remains the reference implementation. It is an [mdBook](https://rust-lang.github.io/mdBook/) project, the same tool used to build the official Rust Book and Rust by Example, so `mdbook serve tutorial` renders it as a browsable site.
 
-Proposed structure:
+Structure:
 
 ```text
 tutorial/
-  proposal.md
-  README.md
-  chapters/
-    01-minimal-cli.md
-    02-application-types.md
-    03-errors.md
-    04-first-model-call.md
-    05-configuration.md
-    06-validation.md
-    07-execution.md
-    08-traits-and-tests.md
-    09-safety-modes.md
-    10-risk-analysis.md
-    11-history.md
-    12-terminal-editor.md
-    13-deterministic-commands.md
-    14-spec-driven-development.md
-  prompts/
-  exercises/
-  checkpoints.md
+  book.toml
+  src/
+    SUMMARY.md
+    README.md
+    proposal.md
+    chapters/
+      01-minimal-cli.md
+      02-application-types.md
+      03-errors.md
+      04-first-model-call.md
+      05-configuration.md
+      06-validation.md
+      07-execution.md
+      08-traits-and-tests.md
+      09-safety-modes.md
+      10-risk-analysis.md
+      11-history.md
+      12-terminal-editor.md
+      13-deterministic-commands.md
+      14-spec-driven-development.md
+    prompts/
+    exercises/
+    checkpoints.md
+    troubleshooting.md
+    divergences.md
+  scripts/
+    check-course.sh
 ```
 
 Each chapter will correspond to a Git tag such as `tutorial-01-minimal-cli`. A learner can start from the previous tag, complete the chapter, and compare the result with the next tag. The finished SAI codebase remains the destination, not the starting point.

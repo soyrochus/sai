@@ -1,4 +1,4 @@
-# Chapter 7 — Execute Without a Shell
+# Chapter 7 — Execute the safe path
 
 The application now has a validated program and argument vector. It can finally run a command while preserving the boundary established in Chapter 6.
 
@@ -53,7 +53,7 @@ Command::new("find").args([".", "-name", "*.rs"])
 
 passes `*.rs` literally to `find`, which is what `find -name` expects. A shell would expand a glob before starting the program. Direct execution avoids shell control syntax, but it also means your application must define glob behavior deliberately for tools that expect expanded filenames.
 
-The finished application handles this boundary in [`src/executor.rs`](../../src/executor.rs). Read it after completing the simple direct version.
+The finished application handles this boundary in [`src/executor.rs`](../../../src/executor.rs). Read it after completing the simple direct version.
 
 ## AI collaboration script
 

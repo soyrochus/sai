@@ -1,4 +1,4 @@
-# Chapter 5 — Configuration Without Surprises
+# Chapter 5 — Configuration instead of hard-coded behavior
 
 Hard-coded endpoints and model names were fine for one request. A real application needs configuration that is typed, explainable, and predictable.
 
@@ -137,7 +137,7 @@ compiled defaults < YAML file < environment overrides
 
 That rule should appear in `--help` or project documentation. Invisible precedence is a common source of configuration bugs.
 
-The production project has a broader configuration model in [`src/config.rs`](../../src/config.rs). Grow toward it only when the product needs another setting.
+The production project has a broader configuration model in [`src/config.rs`](../../../src/config.rs). Grow toward it only when the product needs another setting.
 
 ## AI collaboration script
 

@@ -1,4 +1,4 @@
-# Chapter 13 — Turn AI Output into a Deterministic Artifact
+# Chapter 13 — Deterministic commands
 
 A useful command should not require another model call every time it runs. Freezing moves AI from runtime to authoring time: generate once, review once, then execute a stable script.
 
@@ -118,7 +118,7 @@ pub fn write_atomic(
 }
 ```
 
-The full reference implementation, including header parsing and listing, is [`src/commands.rs`](../../src/commands.rs).
+The full reference implementation, including header parsing and listing, is [`src/commands.rs`](../../../src/commands.rs).
 
 ## AI collaboration script
 

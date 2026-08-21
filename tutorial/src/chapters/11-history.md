@@ -1,4 +1,4 @@
-# Chapter 11 — Keep History Compatible
+# Chapter 11 — History and backward-compatible data
 
 Once commands affect a real machine, users need a record of what was requested, generated, and executed. An append-only format keeps the first implementation understandable.
 
@@ -78,7 +78,7 @@ Construct the entry in orchestration after every completed attempt. Decide expli
 
 Newline-delimited JSON is useful because one damaged record does not make the rest of the file structurally unreadable. It is not a database: concurrent writers, durability, indexing, and unbounded growth need additional design.
 
-The reference implementation adds rotation and backup fallback in [`src/history.rs`](../../src/history.rs).
+The reference implementation adds rotation and backup fallback in [`src/history.rs`](../../../src/history.rs).
 
 ## AI collaboration script
 

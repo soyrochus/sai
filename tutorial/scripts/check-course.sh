@@ -2,7 +2,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-chapters="$root/tutorial/chapters"
+chapters="$root/tutorial/src/chapters"
 
 for number in $(seq -w 1 14); do
   file="$(find "$chapters" -maxdepth 1 -type f -name "${number}-*.md" -print -quit)"
@@ -18,8 +18,14 @@ for number in $(seq -w 1 14); do
   done
 done
 
-for file in "$root/tutorial/README.md" "$root/tutorial/checkpoints.md" "$root/tutorial/prompts/README.md" "$root/tutorial/exercises/README.md" "$root/tutorial/troubleshooting.md"; do
+for file in "$root/tutorial/book.toml" "$root/tutorial/src/SUMMARY.md" "$root/tutorial/src/README.md" "$root/tutorial/src/checkpoints.md" "$root/tutorial/src/prompts/README.md" "$root/tutorial/src/exercises/README.md" "$root/tutorial/src/troubleshooting.md" "$root/tutorial/src/divergences.md" "$root/tutorial/src/proposal.md"; do
   test -s "$file" || { echo "missing or empty: $file" >&2; exit 1; }
 done
+
+if command -v mdbook >/dev/null 2>&1; then
+  (cd "$root/tutorial" && mdbook build) || { echo "mdbook build failed" >&2; exit 1; }
+else
+  echo "mdbook not installed; skipping build check" >&2
+fi
 
 echo "Rust in the Loop course structure is complete."

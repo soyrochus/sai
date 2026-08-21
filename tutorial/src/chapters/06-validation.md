@@ -1,4 +1,4 @@
-# Chapter 6 — Treat Model Output as Untrusted Input
+# Chapter 6 — Treat model output as untrusted
 
 The model can produce a plausible command, but plausible is not the same as permitted. This chapter creates a deterministic validation boundary before execution.
 

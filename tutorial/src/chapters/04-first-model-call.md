@@ -1,4 +1,4 @@
-# Chapter 4 — Make the First Model Call
+# Chapter 4 — The first model call
 
 The CLI can now parse input and report errors. In this chapter it crosses the first important boundary: natural language goes to an AI model and a command comes back.
 
@@ -111,7 +111,7 @@ println!("{command}");
 
 This snippet prints the command directly instead of returning it through `RunSummary`. Treat `RunSummary` as scaffolding for Chapters 2–3: from here on, orchestration will grow into its own module and eventually return a plain `Result<i32>` once traits are introduced in Chapter 8. That change is deliberate, not an oversight.
 
-Choose a model available to your account. The finished SAI implementation supports multiple provider shapes; examine [`src/llm.rs`](../../src/llm.rs) when you are ready to generalize this first client.
+Choose a model available to your account. The finished SAI implementation supports multiple provider shapes; examine [`src/llm.rs`](../../../src/llm.rs) when you are ready to generalize this first client.
 
 ## AI collaboration script
 

@@ -1,4 +1,4 @@
-# Chapter 8 — Put Side Effects Behind Traits
+# Chapter 8 — Traits make external systems replaceable
 
 The program works, but its application flow is tied to a live model and the operating system. Traits let us test orchestration without either dependency.
 
@@ -80,7 +80,7 @@ where
 
 Note that `run` returns `Result<i32>`, not the `RunSummary` from Chapter 2. `RunSummary` served its purpose while the application had one linear path to observe; now that generation, validation, and execution are independently testable behind traits, the exit code is the only outcome orchestration itself needs to report. If your own project still wants a richer summary — for history or diagnostics — build it explicitly from this point rather than reviving the old struct.
 
-The finished project uses the same idea in [`src/app.rs`](../../src/app.rs).
+The finished project uses the same idea in [`src/app.rs`](../../../src/app.rs).
 
 ## AI collaboration script
 

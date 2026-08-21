@@ -242,7 +242,7 @@ those two functions.
 This chapter is the closest to a 1:1 correspondence in the whole course,
 because it teaches a *process*, not a code artifact. The archived change it
 points learners at —
-[`openspec/changes/archive/2026-08-20-add-deterministic-commands`](../openspec/changes/archive/2026-08-20-add-deterministic-commands/) —
+[`openspec/changes/archive/2026-08-20-add-deterministic-commands`](../../openspec/changes/archive/2026-08-20-add-deterministic-commands/) —
 is the real proposal, spec, design, and task list that produced the actual
 `src/commands.rs` frozen-command feature. Reading it after Chapter 13 is the
 one place in the course where "the reference destination" and "what you just

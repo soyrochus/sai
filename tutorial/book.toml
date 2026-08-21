@@ -1,0 +1,10 @@
+[book]
+title = "Rust in the Loop"
+authors = ["Iwan van der Kleijn"]
+description = "Learn Rust. Build with AI. Build AI-powered apps."
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/soyrochus/sai"
+edit-url-template = "https://github.com/soyrochus/sai/edit/main/tutorial/{path}"

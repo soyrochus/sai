@@ -1,4 +1,4 @@
-# Chapter 10 — Explain Risk Deterministically
+# Chapter 10 — Local risk analysis
 
 Confirmation is more useful when the program can point to concrete risky syntax. The analysis must be deterministic: identical text should produce identical markers without another model call.
 
@@ -104,7 +104,7 @@ This deliberately handles ASCII shell metacharacters plus two conservative risk 
 
 Use markers to render a deterministic warning. They inform confirmation; they do not make shell execution safe.
 
-The production analyzer lives in [`src/safety.rs`](../../src/safety.rs).
+The production analyzer lives in [`src/safety.rs`](../../../src/safety.rs).
 
 ## AI collaboration script
 

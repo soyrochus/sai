@@ -1,4 +1,4 @@
-# Chapter 14 — Lead an AI Change with a Specification
+# Chapter 14 — Specification-driven development with AI
 
 You have built the major pieces of an AI-powered Rust application. The final skill is controlling a change that crosses those pieces without letting chat history become the only source of truth.
 
@@ -76,7 +76,7 @@ The design records decisions and rejected alternatives. The task list turns requ
 
 Keep requirements about observable behavior, design about engineering choices, and tasks about work. Mixing them makes future review much harder.
 
-This repository’s completed example is [`openspec/changes/archive/2026-08-20-add-deterministic-commands`](../../openspec/changes/archive/2026-08-20-add-deterministic-commands/).
+This repository’s completed example is [`openspec/changes/archive/2026-08-20-add-deterministic-commands`](../../../openspec/changes/archive/2026-08-20-add-deterministic-commands/).
 
 ## AI collaboration script
 

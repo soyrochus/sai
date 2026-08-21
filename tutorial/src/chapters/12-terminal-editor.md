@@ -1,4 +1,4 @@
-# Chapter 12 — Build a Terminal Editor as a State Machine
+# Chapter 12 — An interactive terminal editor
 
 Rich natural-language prompts need multiple lines, cursor editing, history recall, and cancellation. Terminal I/O is difficult to test; state transitions are not.
 
@@ -106,7 +106,7 @@ let outcome = loop {
 terminal::disable_raw_mode()?;
 ```
 
-Use an RAII guard so raw mode is restored even when rendering returns an error. The complete reference state machine is in [`src/editor.rs`](../../src/editor.rs).
+Use an RAII guard so raw mode is restored even when rendering returns an error. The complete reference state machine is in [`src/editor.rs`](../../../src/editor.rs).
 
 ## AI collaboration script
 

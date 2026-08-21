@@ -1,4 +1,4 @@
-# Chapter 9 — Make Safety Modes Explicit
+# Chapter 9 — Safety modes as explicit states
 
 Some useful requests genuinely need pipes, redirection, or shell expansion. Instead of quietly weakening the default, represent stronger capabilities as explicit modes.
 
@@ -75,7 +75,7 @@ if mode.uses_shell() {
 
 Do not reconstruct a shell string from parsed tokens. In shell modes, the original source contains meaningful quoting and operators; in default mode, the token vector is the authority.
 
-See the production policy type in [`src/safety_mode.rs`](../../src/safety_mode.rs).
+See the production policy type in [`src/safety_mode.rs`](../../../src/safety_mode.rs).
 
 ## AI collaboration script
 
