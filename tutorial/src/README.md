@@ -91,6 +91,7 @@ cargo clippy --all-targets -- -D warnings
 - [Exercises and capstone](exercises/README.md) — design work that is intentionally not solved for you.
 - [Troubleshooting](troubleshooting.md) — compiler, test, API, shell, and terminal symptoms.
 - [Divergences from the reference application](divergences.md) — chapter-by-chapter, where `src/` differs from what you build and why.
+- [Instructor's guide](instructor-guide.md) — chapter-by-chapter, why each one is built the way it is: what's delegated to AI, what's authored, and what the compiler-conversation centerpiece proves.
 - [Course proposal](proposal.md) — goals, scope, and teaching philosophy.
 
 ## The rule that matters most

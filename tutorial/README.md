@@ -33,7 +33,7 @@ tutorial/
     assistant-setup.md  concrete setup for Claude Code, GitHub Copilot, Codex
     chapters/       the 14 chapters
     checkpoints.md, prompts/, exercises/, troubleshooting.md,
-    divergences.md, proposal.md
+    divergences.md, instructor-guide.md, proposal.md
     LICENSE.md      CC BY 4.0 — covers this tutorial's text, not the SAI source code
                     (lives inside src/ so mdBook copies it into the built book)
   scripts/

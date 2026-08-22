@@ -36,5 +36,6 @@
 [Exercises and capstone](exercises/README.md)
 [Troubleshooting](troubleshooting.md)
 [Divergences from the reference application](divergences.md)
+[Instructor's guide](instructor-guide.md)
 [Course proposal](proposal.md)
 [License](LICENSE.md)

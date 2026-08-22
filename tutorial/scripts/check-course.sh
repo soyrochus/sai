@@ -18,7 +18,7 @@ for number in $(seq -w 1 14); do
   done
 done
 
-for file in "$root/tutorial/book.toml" "$root/tutorial/src/SUMMARY.md" "$root/tutorial/src/README.md" "$root/tutorial/src/assistant-setup.md" "$root/tutorial/src/checkpoints.md" "$root/tutorial/src/prompts/README.md" "$root/tutorial/src/exercises/README.md" "$root/tutorial/src/troubleshooting.md" "$root/tutorial/src/divergences.md" "$root/tutorial/src/proposal.md"; do
+for file in "$root/tutorial/book.toml" "$root/tutorial/src/SUMMARY.md" "$root/tutorial/src/README.md" "$root/tutorial/src/assistant-setup.md" "$root/tutorial/src/checkpoints.md" "$root/tutorial/src/prompts/README.md" "$root/tutorial/src/exercises/README.md" "$root/tutorial/src/troubleshooting.md" "$root/tutorial/src/divergences.md" "$root/tutorial/src/instructor-guide.md" "$root/tutorial/src/proposal.md"; do
   test -s "$file" || { echo "missing or empty: $file" >&2; exit 1; }
 done
 
