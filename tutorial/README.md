@@ -1,5 +1,7 @@
 # Rust in the Loop — mdBook project
 
+![Rust in the Loop tutorial logo](../images/rust-in-the-loop-smaller.png)
+
 This directory is an [mdBook](https://rust-lang.github.io/mdBook/) project, built the same way as [The Rust Programming Language](https://github.com/rust-lang/book) and [Rust by Example](https://github.com/rust-lang/rust-by-example). The book's actual content — the fourteen chapters and supporting material — lives under [`src/`](src/README.md).
 
 ## Read it

@@ -22,7 +22,14 @@ Current release and toolchain:
 - Version: 1.2.0
 - Rust edition: 2024
 
-![sai-logo](images/sai-logo-smallest.png)
+This repository also contains [*Rust in the Loop*](#tutorial-rust-in-the-loop), a fourteen-chapter tutorial that teaches Rust by building a smaller version of Sai-cli.
+
+<!-- markdownlint-disable MD033 -->
+<p>
+  <img alt="sai-logo" src="images/sai-logo-smallest.png" height="160" />
+  <img alt="Rust in the Loop tutorial logo" src="images/rust-in-the-loop-smaller.png" height="160" />
+</p>
+<!-- markdownlint-enable MD033 -->
 
 ---
 
